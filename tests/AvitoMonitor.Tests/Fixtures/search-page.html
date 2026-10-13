@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!--
+  Искусственная страница выдачи Авито для тестов парсера.
+  Повторяет только ту разметку, на которую опирается AvitoPageParser (атрибуты data-marker / itemprop).
+  Если Авито поменяет вёрстку — сохраните настоящую страницу (программа кладёт её в папку debug)
+  и поправьте селекторы в AvitoPageParser.cs.
+-->
+<html lang="ru">
+<head><title>Купить iPhone 15 в Санкт-Петербурге</title></head>
+<body>
+<h1>iPhone 15 в Санкт-Петербурге <span data-marker="page-title/count">868</span></h1>
+
+<div data-marker="catalog-serp">
+
+  <!-- Частник, цена в meta -->
+  <div data-marker="item" data-item-id="1111111111" id="i1111111111">
+    <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_128_gb_1111111111?context=abc" title="iPhone 15, 128 ГБ">
+      <h3 itemprop="name">iPhone 15, 128 ГБ</h3>
+    </a>
+    <meta itemprop="price" content="45000">
+    <span data-marker="item-price">45&nbsp;000&nbsp;₽</span>
+    <div class="iva-item-descriptionStep-abc"><p>Отличное   состояние,
+      полный комплект</p></div>
+    <div data-marker="item-address"><span>Санкт-Петербург, м. Невский проспект</span></div>
+    <p data-marker="item-date">2 часа назад</p>
+    <div class="iva-item-userInfoStep-xyz"><a href="/user/abc123/profile?src=search">Иван</a></div>
+  </div>
+
+  <!-- Компания (ссылка /brands/), цена только текстом -->
+  <div data-marker="item" data-item-id="2222222222">
+    <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_256gb_2222222222">
+      <h3 itemprop="name">iPhone 15 256GB новый</h3>
+    </a>
+    <span data-marker="item-price">70 000 ₽</span>
+    <div class="iva-item-userInfoStep-xyz"><a href="/brands/apple-store-spb">Apple Store SPB</a></div>
+    <span class="SnippetBadge-badge">Гарантия</span>
+  </div>
+
+  <!-- Без цены -->
+  <div data-marker="item" data-item-id="3333333333">
+    <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_3333333333">
+      <h3 itemprop="name">iPhone 15 на запчасти</h3>
+    </a>
+    <span data-marker="item-price">Цена не указана</span>
+  </div>
+
+  <!-- Дубликат первого объявления (у Авито бывает в блоках рекомендаций) — должен быть пропущен -->
+  <div data-marker="item" data-item-id="1111111111">
+    <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_128_gb_1111111111">
+      <h3 itemprop="name">iPhone 15, 128 ГБ</h3>
+    </a>
+  </div>
+
+  <!-- Карточка без ссылки — мусор, должна быть пропущена -->
+  <div data-marker="item" data-item-id="4444444444"></div>
+</div>
+
+<!-- Блок «в других городах» вне основного списка — должен быть пропущен -->
+<div data-marker="items/extra">
+  <div data-marker="item" data-item-id="5555555555">
+    <a data-marker="item-title" href="/moskva/telefony/iphone_15_5555555555"><h3 itemprop="name">iPhone 15 (Москва)</h3></a>
+  </div>
+</div>
+
+<nav>
+  <span data-marker="pagination-button/page(1)">1</span>
+  <a data-marker="pagination-button/nextPage" href="?p=2">Следующая</a>
+</nav>
+</body>
+</html>
