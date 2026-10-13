@@ -2,46 +2,60 @@
 <!--
   Искусственная страница выдачи Авито для тестов парсера.
   Повторяет только ту разметку, на которую опирается AvitoPageParser (атрибуты data-marker / itemprop).
+  Карточки 1 и 2 — как в вёрстке Авито на октябрь 2026, карточка 3 — старая вёрстка (запасные селекторы).
   Если Авито поменяет вёрстку — сохраните настоящую страницу (программа кладёт её в папку debug)
   и поправьте селекторы в AvitoPageParser.cs.
 -->
 <html lang="ru">
 <head><title>Купить iPhone 15 в Санкт-Петербурге</title></head>
 <body>
-<h1>iPhone 15 в Санкт-Петербурге <span data-marker="page-title/count">868</span></h1>
+<h1>iPhone 15 в Санкт-Петербурге <span data-marker="page-title/count">3&nbsp;190</span></h1>
 
 <div data-marker="catalog-serp">
 
-  <!-- Частник, цена в meta -->
+  <!-- Обычный профиль продавца (/brands/i...), описания нет — только состояние -->
   <div data-marker="item" data-item-id="1111111111" id="i1111111111">
     <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_128_gb_1111111111?context=abc" title="iPhone 15, 128 ГБ">
       <h3 itemprop="name">iPhone 15, 128 ГБ</h3>
     </a>
     <meta itemprop="price" content="45000">
     <span data-marker="item-price">45&nbsp;000&nbsp;₽</span>
-    <div class="iva-item-descriptionStep-abc"><p>Отличное   состояние,
-      полный комплект</p></div>
-    <div data-marker="item-address"><span>Санкт-Петербург, м. Невский проспект</span></div>
+    <div data-marker="item-specific-params">Отличное</div>
+    <div data-marker="item-location"><span>Достоевская, до 5&nbsp;мин.</span></div>
     <p data-marker="item-date">2 часа назад</p>
-    <div class="iva-item-userInfoStep-xyz"><a href="/user/abc123/profile?src=search">Иван</a></div>
+    <div class="iva-item-userInfoStep-xyz">
+      <a href="/brands/i12345678?src=search_seller_info&amp;iid=1111111111"><p>Иван</p></a>
+      <span data-marker="seller-info/score">4,9</span>
+      <p data-marker="seller-info/summary">12 отзывов</p>
+    </div>
   </div>
 
-  <!-- Компания (ссылка /brands/), цена только текстом -->
+  <!-- Фирменная страница магазина, цена только текстом, значки вложены друг в друга -->
   <div data-marker="item" data-item-id="2222222222">
     <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_256gb_2222222222">
       <h3 itemprop="name">iPhone 15 256GB новый</h3>
     </a>
     <span data-marker="item-price">70 000 ₽</span>
-    <div class="iva-item-userInfoStep-xyz"><a href="/brands/apple-store-spb">Apple Store SPB</a></div>
-    <span class="SnippetBadge-badge">Гарантия</span>
+    <div class="SnippetBadges-root">
+      <div data-marker="badge-title-100"><span>Цена ниже рыночной</span></div>
+      <div data-marker="badge-title-2359"><span>Надёжный продавец</span></div>
+    </div>
+    <div class="iva-item-userInfoStep-xyz">
+      <a href="/brands/apple-store-spb?src=search_seller_info"><p>Apple Store SPB</p></a>
+      <p data-marker="seller-info/summary">1&nbsp;189 отзывов</p>
+    </div>
   </div>
 
-  <!-- Без цены -->
+  <!-- Старая вёрстка: описание в descriptionStep, адрес в item-address, профиль /user/, без цены -->
   <div data-marker="item" data-item-id="3333333333">
     <a data-marker="item-title" href="/sankt-peterburg/telefony/iphone_15_3333333333">
       <h3 itemprop="name">iPhone 15 на запчасти</h3>
     </a>
     <span data-marker="item-price">Цена не указана</span>
+    <div class="iva-item-descriptionStep-abc"><p>Разбит   экран,
+      не включается</p></div>
+    <div data-marker="item-address"><span>Санкт-Петербург, м. Невский проспект</span></div>
+    <div class="iva-item-userInfoStep-xyz"><a href="/user/abc123/profile?src=search">Пётр</a></div>
   </div>
 
   <!-- Дубликат первого объявления (у Авито бывает в блоках рекомендаций) — должен быть пропущен -->
@@ -62,9 +76,10 @@
   </div>
 </div>
 
-<nav>
+<nav data-marker="pagination-button">
   <span data-marker="pagination-button/page(1)">1</span>
-  <a data-marker="pagination-button/nextPage" href="?p=2">Следующая</a>
+  <a data-marker="pagination-button/page(2)" href="?p=2">2</a>
+  <a data-marker="pagination-button/nextPage" aria-label="Следующая страница" href="?p=2">→</a>
 </nav>
 </body>
 </html>

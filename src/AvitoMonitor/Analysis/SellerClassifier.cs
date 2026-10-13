@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using AvitoMonitor.Domain;
 
 namespace AvitoMonitor.Analysis;
@@ -6,8 +7,12 @@ namespace AvitoMonitor.Analysis;
 /// Определяет, кто продаёт: частник/собственник, магазин/агентство — или бизнес,
 /// который записался как частное лицо.
 ///
-/// Как это работает — «баллы подозрения»:
+/// Открытый бизнес: на странице объявления Авито пишет «Компания»/«Агентство»
+/// или у продавца фирменная страница магазина (avito.ru/brands/smart-butik).
+///
+/// Скрытый бизнес — «баллы подозрения»:
 /// <list type="bullet">
+/// <item>у продавца 200+ отзывов — +2, 50+ отзывов — +1;</item>
 /// <item>у продавца 3 и больше объявлений в этой выдаче — +2;</item>
 /// <item>название продавца похоже на компанию («ООО», «store», «недвижимость») — +2;</item>
 /// <item>каждое «магазинное» или «агентское» слово в тексте («в наличии», «рассрочка», «комиссия агентства») — +1.</item>
@@ -18,6 +23,12 @@ public static class SellerClassifier
 {
     public const int SuspicionThreshold = 2;
     public const int ManyListingsThreshold = 3;
+    public const int ManyReviewsThreshold = 200;
+    public const int SomeReviewsThreshold = 50;
+
+    // Обычный профиль на Авито — /brands/i12345678 или /brands/<32 символа 0-9a-f>.
+    // Такой адрес бывает и у частников, и у компаний, поэтому сам по себе ни о чём не говорит.
+    private static readonly Regex OrdinaryProfileId = new(@"^(i\d+|[0-9a-f]{32})$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly string[] ShopWords =
     [
@@ -61,25 +72,54 @@ public static class SellerClassifier
             .GroupBy(key => key)
             .ToDictionary(group => group.Key, group => group.Count());
 
+    /// <summary>
+    /// У продавца фирменная страница магазина со своим адресом (avito.ru/brands/smart-butik),
+    /// а не обычный профиль (avito.ru/brands/i12345678). Такие страницы бывают только у бизнеса.
+    /// </summary>
+    public static bool HasNamedShopPage(string? sellerUrl)
+    {
+        const string marker = "/brands/";
+        var path = sellerUrl?.Split('?', '#')[0].TrimEnd('/') ?? "";
+        var index = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+            return false;
+
+        var slug = path[(index + marker.Length)..];
+        return slug.Length > 0 && !slug.Contains('/') && !OrdinaryProfileId.IsMatch(slug);
+    }
+
     public static SellerVerdict Classify(Listing listing, SearchCategory category, int sellerListingsInSearch)
     {
         var isRealEstate = category == SearchCategory.RealEstate;
         var label = TextUtils.Normalize(listing.SellerLabel);
 
-        // 1. Авито сам пишет, что это компания/агентство (ссылка /brands/ или подпись в профиле)
-        var declaredBusiness = (listing.SellerUrl?.Contains("/brands/", StringComparison.OrdinalIgnoreCase) ?? false)
-                               || label.Contains("компания", StringComparison.Ordinal)
-                               || label.Contains("агентство", StringComparison.Ordinal)
-                               || label.Contains("магазин", StringComparison.Ordinal);
-        if (declaredBusiness)
-        {
-            return new SellerVerdict(isRealEstate ? SellerKind.Agency : SellerKind.Shop,
-                ["Авито показывает продавца как компанию"]);
-        }
+        // 1. Бизнес открыто: подпись на странице объявления или фирменная страница магазина
+        var declaredReason =
+            label.Contains("компания", StringComparison.Ordinal)
+            || label.Contains("агентство", StringComparison.Ordinal)
+            || label.Contains("магазин", StringComparison.Ordinal)
+                ? $"Авито пишет о продавце: «{listing.SellerLabel}»"
+                : HasNamedShopPage(listing.SellerUrl)
+                    ? "У продавца фирменная страница магазина на Авито"
+                    : null;
 
-        // 2. Записан как частник — проверяем признаки бизнеса
+        if (declaredReason is not null)
+            return new SellerVerdict(isRealEstate ? SellerKind.Agency : SellerKind.Shop, [declaredReason]);
+
+        // 2. Похож на частника — проверяем признаки бизнеса
         var reasons = new List<string>();
         var score = 0;
+
+        if (listing.SellerReviews >= ManyReviewsThreshold)
+        {
+            score += 2;
+            reasons.Add($"У продавца {listing.SellerReviews} отзывов — столько бывает у магазинов и перекупщиков");
+        }
+        else if (listing.SellerReviews >= SomeReviewsThreshold)
+        {
+            score += 1;
+            reasons.Add($"У продавца {listing.SellerReviews} отзывов");
+        }
 
         if (sellerListingsInSearch >= ManyListingsThreshold)
         {
@@ -95,7 +135,8 @@ public static class SellerClassifier
             reasons.Add($"Имя продавца похоже на компанию («{listing.SellerName}»)");
         }
 
-        var fullText = TextUtils.Normalize($"{listing.Title} {listing.Description} {listing.Badges}");
+        // Значки Авито («Скидка на доставку», «Оплата частями») сюда не берём: их ставит Авито, а не продавец
+        var fullText = TextUtils.Normalize($"{listing.Title} {listing.Description}");
         var ownerHits = TextUtils.FindAll(fullText, OwnerPhrases);
         var textWithoutOwnerPhrases = TextUtils.RemovePhrases(fullText, OwnerPhrases);
         var businessHits = TextUtils.FindAll(textWithoutOwnerPhrases, isRealEstate ? AgentWords : ShopWords);

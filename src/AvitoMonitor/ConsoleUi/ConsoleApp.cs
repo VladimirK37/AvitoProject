@@ -349,7 +349,7 @@ public sealed class ConsoleApp(
 
         var unit = analysis.Market.PerSquareMeter ? " (за м²)" : "";
         var table = new Table().Border(TableBorder.Rounded).Title($"Рыночные цены: {Markup.Escape(search.Name)}")
-            .AddColumns("Группа", "Объявлений", $"Медиана{unit}", "Минимум", "Максимум");
+            .AddColumns("Группа", "Объявлений", $"Медиана{unit}", "Минимум", "Максимум", "Выбросов отброшено");
         foreach (var group in GroupKeys.OrderByGroup(analysis.Market.Groups.Values, g => g.Key))
         {
             table.AddRow(
@@ -357,17 +357,23 @@ public sealed class ConsoleApp(
                 $"{group.Count}",
                 $"[bold]{Markup.Escape(TextUtils.Money(group.Median))}[/]",
                 Markup.Escape(TextUtils.Money(group.Min)),
-                Markup.Escape(TextUtils.Money(group.Max)));
+                Markup.Escape(TextUtils.Money(group.Max)),
+                group.Outliers > 0 ? $"{group.Outliers}" : "—");
         }
 
         AnsiConsole.Write(table);
 
+        var replicas = rows.Count(r => r.Exclusion?.Kind == ExclusionKind.Replica);
+        var otherModels = rows.Count(r => r.Exclusion?.Kind == ExclusionKind.OtherModel);
+        if (replicas + otherModels > 0)
+            AnsiConsole.MarkupLine($"Не учтено в рыночной цене: копий — {replicas}, других моделей — {otherModels}.");
+
         var sellers = string.Join(", ", rows.GroupBy(r => r.Seller.Title).OrderByDescending(g => g.Count()).Select(g => $"{g.Key}: {g.Count()}"));
         AnsiConsole.MarkupLine($"Продавцы: {Markup.Escape(sellers)}");
 
-        // Самые выгодные без признаков обмана
+        // Самые выгодные: не копии, нужная модель, без признаков обмана
         var bestDeals = rows
-            .Where(r => r.DeviationPercent < -10 && r.Flags.All(f => f.Level != FlagLevel.Danger))
+            .Where(r => r.Exclusion is null && r.DeviationPercent < -10 && r.Flags.All(f => f.Level != FlagLevel.Danger))
             .OrderBy(r => r.DeviationPercent)
             .Take(5)
             .ToList();
@@ -454,6 +460,7 @@ public sealed class ConsoleApp(
                 ("Как часто проверять новые объявления", () => Change(() => settings.WatchIntervalMinutes = Ask.Number("Интервал, минут (2–240):", 2, 240, settings.WatchIntervalMinutes))),
                 ("Порог «подозрительно дёшево»", () => Change(() => settings.SuspiciouslyCheapPercent = Ask.Number("На сколько % ниже медианы (10–90):", 10, 90, settings.SuspiciouslyCheapPercent))),
                 ("Открывать новые объявления для подробной проверки: вкл/выкл", () => Change(() => settings.OpenNewListingsForDetails = !settings.OpenNewListingsForDetails)),
+                ("Не присылать в Telegram копии и другие модели: вкл/выкл", () => Change(() => settings.HideReplicasAndOtherModels = !settings.HideReplicasAndOtherModels)),
                 ("Выбрать браузер", ChooseBrowserAsync),
                 ("Скрытый режим браузера: вкл/выкл", async () => { settings.Headless = !settings.Headless; SaveSettings(); await browser.CloseAsync(); }),
                 ("Открыть папку с данными", () => { OpenFile(paths.Root); return Task.CompletedTask; }),
@@ -475,6 +482,7 @@ public sealed class ConsoleApp(
         table.AddRow("Проверка новых объявлений", $"каждые {settings.WatchIntervalMinutes} мин");
         table.AddRow("«Подозрительно дёшево»", $"на {settings.SuspiciouslyCheapPercent}% ниже медианы и больше");
         table.AddRow("Подробная проверка новых", settings.OpenNewListingsForDetails ? "вкл" : "выкл");
+        table.AddRow("Скрывать копии и другие модели", settings.HideReplicasAndOtherModels ? "вкл" : "выкл");
         table.AddRow("Браузер", Markup.Escape(settings.BrowserChannel));
         table.AddRow("Скрытый режим браузера", settings.Headless ? "вкл" : "выкл");
         table.AddRow("Папка с данными", Markup.Escape(paths.Root));

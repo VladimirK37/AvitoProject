@@ -119,6 +119,9 @@ public static class AvitoUrl
         return Uri.TryCreate(new Uri(BaseUrl), href, out var absolute) ? absolute.ToString() : href;
     }
 
+    /// <summary>Текст из строки поиска Авито (параметр q=), например «airpods 4», или null.</summary>
+    public static string? GetSearchText(Uri searchUrl) => GetQueryParameter(searchUrl, "q");
+
     private static string? GetQueryParameter(Uri url, string key)
     {
         foreach (var part in url.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))

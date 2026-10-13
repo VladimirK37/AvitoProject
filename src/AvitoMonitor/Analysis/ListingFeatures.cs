@@ -30,6 +30,12 @@ public static class ListingFeatures
     // Год выпуска авто: «Toyota Camry 2.5 AT, 2019, 85 000 км»
     private static readonly Regex Year = new(@"(?<!\d)(19[5-9]\d|20[0-4]\d)(?!\d)", Options);
 
+    // Шумоподавление в наушниках: «ANC», «с шумоподавлением», «noise cancelling»
+    private static readonly Regex NoiseCancelling = new(@"\banc\b|шумоподав|noise cancel", Options);
+
+    /// <summary>В заголовке указано активное шумоподавление (ANC).</summary>
+    public static bool HasNoiseCancelling(string title) => NoiseCancelling.IsMatch(title);
+
     /// <summary>Объём памяти в гигабайтах (если указано несколько чисел — берём наибольшее, это накопитель).</summary>
     public static int? GetStorageGb(string title)
     {

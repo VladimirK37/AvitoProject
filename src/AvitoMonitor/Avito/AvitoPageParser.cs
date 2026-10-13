@@ -126,22 +126,27 @@ public static class AvitoPageParser
         var price = TextUtils.ParseMoney(card.QuerySelector("meta[itemprop='price']")?.GetAttribute("content"))
                     ?? TextUtils.ParseMoney(FirstText(card, "[data-marker='item-price']"));
 
+        // В части категорий (например, телефоны) описания в выдаче нет — вместо него параметры: «Новый», «Отличное»
         var description = TextUtils.Clean(card.QuerySelector("meta[itemprop='description']")?.GetAttribute("content"));
         if (description.Length == 0)
-            description = FirstText(card, "[class*='descriptionStep']", "[class*='item-description']");
+            description = FirstText(card, "[class*='descriptionStep']", "[class*='item-description']", "[data-marker='item-specific-params']");
 
-        // Продавец: у компаний ссылка на /brands/..., у частных лиц — на /user/...
+        // Продавец: ссылка на его профиль (/brands/...; в старой вёрстке — /user/...)
         var sellerLink = card.QuerySelector("a[href*='/brands/']") ?? card.QuerySelector("a[href*='/user/']");
         var sellerHref = sellerLink?.GetAttribute("href");
         var sellerName = TextUtils.Clean(sellerLink?.TextContent);
         if (sellerName.Length == 0)
             sellerName = FirstText(card, "[data-marker='seller-info/name']", "[class*='userInfo'] p", "[class*='sellerInfo'] p");
 
-        var badges = card.QuerySelectorAll("[class*='badge'], [data-marker*='badge']")
-            .Select(element => TextUtils.Clean(element.TextContent))
-            .Where(text => text.Length > 0)
-            .Distinct()
-            .ToList();
+        // «1 962 отзыва»
+        var sellerSummary = FirstText(card, "[data-marker='seller-info/summary']");
+        var sellerReviews = sellerSummary.Contains("отзыв", StringComparison.OrdinalIgnoreCase)
+            ? (int?)TextUtils.ParseMoney(sellerSummary)
+            : null;
+
+        var badges = LeafTexts(card, "[data-marker^='badge-title']");
+        if (badges.Count == 0)
+            badges = LeafTexts(card, "[class*='badge'], [data-marker*='badge']");
 
         return new Listing
         {
@@ -150,13 +155,28 @@ public static class AvitoPageParser
             Url = AvitoUrl.ToAbsolute(href, dropQuery: true),
             Price = price is > 0 ? price : null,
             Description = NullIfEmpty(description),
-            Address = NullIfEmpty(FirstText(card, "[data-marker='item-address']", "[class*='geo-root']", "[class*='geo-address']")),
+            // «Достоевская, до 5 мин.» или город, если продавец из другого города с доставкой
+            Address = NullIfEmpty(FirstText(card,
+                "[data-marker='item-location']", "[data-marker='item-address']", "[class*='geo-root']", "[class*='geo-address']")),
             PublishedText = NullIfEmpty(FirstText(card, "[data-marker='item-date']")),
             SellerName = NullIfEmpty(sellerName),
             SellerUrl = sellerHref is null ? null : AvitoUrl.ToAbsolute(sellerHref, dropQuery: true),
+            SellerReviews = sellerReviews,
             Badges = badges.Count > 0 ? string.Join(" | ", badges) : null,
         };
     }
+
+    /// <summary>
+    /// Тексты самых «глубоких» подходящих элементов. Значки бывают вложены друг в друга,
+    /// и без этого их текст склеился бы: «Надёжный продавецДокументы проверены».
+    /// </summary>
+    private static List<string> LeafTexts(IElement root, string selector) =>
+        root.QuerySelectorAll(selector)
+            .Where(element => element.QuerySelector(selector) is null)
+            .Select(element => TextUtils.Clean(element.TextContent))
+            .Where(text => text.Length > 0)
+            .Distinct()
+            .ToList();
 
     /// <summary>Текст первого найденного элемента из списка селекторов (пробуем по очереди).</summary>
     private static string FirstText(IParentNode root, params string[] selectors)

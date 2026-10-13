@@ -116,6 +116,14 @@ public sealed class WatchWorkflow(
         foreach (var listing in newListings)
         {
             var assessment = analysis.Evaluate(listing);
+
+            // Копии и другие модели — шум, по умолчанию не беспокоим ими
+            if (settings.HideReplicasAndOtherModels && assessment.Exclusion is { } exclusion)
+            {
+                observer.OnInfo($"Пропущено «{listing.Title}» — {exclusion.Text}");
+                continue;
+            }
+
             observer.OnNewListing(search, assessment);
 
             var sent = await telegram.TrySendAsync(TelegramMessageFormatter.NewListing(search, assessment), ct);

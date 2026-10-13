@@ -20,10 +20,35 @@ public sealed record ListingAssessment(
     IReadOnlyList<RedFlag> Flags,
     SellerVerdict Seller,
     // Черновик первого сообщения продавцу
-    string MessageDraft);
+    string MessageDraft,
+    // Не null — объявление не учитывается в рыночной цене (копия или другая модель)
+    MarketExclusion? Exclusion);
 
-/// <summary>Статистика цен в группе объявлений.</summary>
-public sealed record GroupStats(string Key, int Count, decimal Median, decimal Min, decimal Max);
+/// <summary>
+/// Статистика цен в группе объявлений.
+/// Count, Median, Min, Max — по объявлениям без выбросов; Outliers — сколько выбросов отброшено.
+/// </summary>
+public sealed record GroupStats(string Key, int Count, decimal Median, decimal Min, decimal Max, int Outliers);
+
+public enum ExclusionKind
+{
+    /// <summary>Похоже на копию («Оригинал» в кавычках, Luxe, Airoha…).</summary>
+    Replica,
+
+    /// <summary>Другая модель: искали AirPods 4, а это AirPods Pro 3.</summary>
+    OtherModel,
+}
+
+/// <summary>Почему объявление не учитывается в рыночной цене.</summary>
+/// <param name="Detail">Подробность: найденный признак копии или чем модель отличается от запроса.</param>
+public sealed record MarketExclusion(ExclusionKind Kind, string Detail)
+{
+    public string Text => Kind switch
+    {
+        ExclusionKind.Replica => $"похоже на копию (в тексте: {Detail})",
+        _ => $"другая модель: {Detail}",
+    };
+}
 
 public enum FlagLevel
 {

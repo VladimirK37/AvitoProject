@@ -24,6 +24,7 @@ public static class ListingMerger
                 existing.Badges = item.Badges ?? existing.Badges;
                 existing.SellerName ??= item.SellerName;
                 existing.SellerUrl ??= item.SellerUrl;
+                existing.SellerReviews = item.SellerReviews ?? existing.SellerReviews;
 
                 // Полное описание со страницы объявления не затираем коротким фрагментом из выдачи
                 if (!existing.DetailsLoaded)

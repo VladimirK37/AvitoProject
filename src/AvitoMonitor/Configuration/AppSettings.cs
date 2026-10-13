@@ -50,6 +50,12 @@ public sealed class AppSettings
     /// </summary>
     public bool OpenNewListingsForDetails { get; set; } = true;
 
+    /// <summary>
+    /// Не присылать в Telegram копии («Оригинал» в кавычках, Luxe, Airoha…) и другие модели
+    /// (искали AirPods 4 — попались AirPods Pro). В консоли и Excel они всё равно видны с пометкой.
+    /// </summary>
+    public bool HideReplicasAndOtherModels { get; set; } = true;
+
     // ----- Анализ -----
 
     /// <summary>Насколько процентов ниже медианы цена считается «подозрительно дешёвой».</summary>

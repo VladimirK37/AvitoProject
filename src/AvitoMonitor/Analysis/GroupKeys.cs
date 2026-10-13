@@ -12,6 +12,7 @@ namespace AvitoMonitor.Analysis;
 public sealed record GroupKeys(string Group, string Fallback)
 {
     public const string AllListings = "Все объявления";
+    public const string NoiseCancellingGroup = "С шумоподавлением (ANC)";
     private const string Separator = " · ";
 
     private static readonly Regex FirstNumber = new(@"\d+", RegexOptions.Compiled);
@@ -22,7 +23,9 @@ public sealed record GroupKeys(string Group, string Fallback)
         {
             SearchCategory.RealEstate => ListingFeatures.GetRoomsLabel(listing.Title),
             SearchCategory.Cars => ListingFeatures.GetCarYear(listing.Title) is { } year ? $"{year} г." : "Год не указан",
-            _ => ListingFeatures.GetStorageLabel(listing.Title) ?? "Без уточнения",
+            // Телефоны — по памяти, наушники — с шумоподавлением или без
+            _ => ListingFeatures.GetStorageLabel(listing.Title)
+                 ?? (ListingFeatures.HasNoiseCancelling(listing.Title) ? NoiseCancellingGroup : "Без уточнения"),
         };
 
         // В мультипоиске (iPhone 15 + iPhone 16) нельзя смешивать модели — добавляем название ссылки

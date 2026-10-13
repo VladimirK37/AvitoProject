@@ -6,11 +6,60 @@ namespace AvitoMonitor.Tests;
 public class SellerClassifierTests
 {
     [Fact]
-    public void CompanyProfileIsShop()
+    public void NamedShopPageIsShop()
     {
-        var listing = new Listing { Title = "iPhone 15", SellerUrl = "https://www.avito.ru/brands/apple-store" };
+        var listing = new Listing { Title = "iPhone 15", SellerUrl = "https://www.avito.ru/brands/smart-butik" };
 
         Assert.Equal(SellerKind.Shop, SellerClassifier.Classify(listing, SearchCategory.General, 1).Kind);
+    }
+
+    [Theory]
+    [InlineData("https://www.avito.ru/brands/smart-butik", true)]
+    [InlineData("https://www.avito.ru/brands/ofisjobsa-spb?src=search_seller_info", true)]
+    [InlineData("https://www.avito.ru/brands/i12345678", false)]
+    [InlineData("https://www.avito.ru/brands/0a1b2c3d4e5f60718293a4b5c6d7e8f9", false)]
+    [InlineData("https://www.avito.ru/user/abc/profile", false)]
+    [InlineData(null, false)]
+    public void RecognizesNamedShopPage(string? url, bool expected) =>
+        Assert.Equal(expected, SellerClassifier.HasNamedShopPage(url));
+
+    [Fact]
+    public void OrdinaryProfileIsNotCompanyByItself()
+    {
+        var listing = new Listing { Title = "iPhone 15", SellerUrl = "https://www.avito.ru/brands/i12345678", SellerReviews = 3 };
+
+        Assert.Equal(SellerKind.Private, SellerClassifier.Classify(listing, SearchCategory.General, 1).Kind);
+    }
+
+    [Fact]
+    public void CompanyLabelFromListingPageIsShop()
+    {
+        // На странице объявления у профиля /brands/i... может стоять «Компания»
+        var listing = new Listing { Title = "iPhone 15", SellerUrl = "https://www.avito.ru/brands/i12345678", SellerLabel = "Компания" };
+
+        var verdict = SellerClassifier.Classify(listing, SearchCategory.General, 1);
+
+        Assert.Equal(SellerKind.Shop, verdict.Kind);
+        Assert.Contains("Компания", verdict.Reasons[0]);
+    }
+
+    [Fact]
+    public void HundredsOfReviewsLookLikeReseller()
+    {
+        var listing = new Listing { Title = "iPhone 15", SellerUrl = "https://www.avito.ru/brands/i12345678", SellerReviews = 1962 };
+
+        var verdict = SellerClassifier.Classify(listing, SearchCategory.General, 1);
+
+        Assert.Equal(SellerKind.HiddenShop, verdict.Kind);
+        Assert.Contains(verdict.Reasons, r => r.Contains("1962 отзывов"));
+    }
+
+    [Fact]
+    public void AvitoBadgesAreNotSellerWords()
+    {
+        var listing = new Listing { Title = "iPhone 15", Badges = "Скидка на доставку | Оплата частями | Только доставка" };
+
+        Assert.Equal(SellerKind.Private, SellerClassifier.Classify(listing, SearchCategory.General, 1).Kind);
     }
 
     [Fact]

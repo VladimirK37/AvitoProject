@@ -4,7 +4,7 @@ namespace AvitoMonitor.Analysis;
 
 /// <summary>
 /// Ищет подозрительное в объявлении: слишком низкая цена, «битый / на запчасти»,
-/// блокировка iCloud, просьбы о предоплате, «копия / реплика».
+/// блокировка iCloud, просьбы о предоплате, копии (см. ReplicaDetector).
 /// Списки слов можно дополнять — они в начале класса.
 /// </summary>
 public static class RedFlagDetector
@@ -34,11 +34,11 @@ public static class RedFlagDetector
         "звонки не принимаю",
     ];
 
-    private static readonly string[] ReplicaWords = ["копия", "реплика", "replica", "1:1", "люкс качеств"];
-
     /// <param name="deviationPercent">Отклонение цены от медианы, %.</param>
     /// <param name="cheapThresholdPercent">С какого процента ниже рынка считать цену подозрительной (обычно 40).</param>
-    public static IReadOnlyList<RedFlag> Detect(Listing listing, double? deviationPercent, int cheapThresholdPercent)
+    /// <param name="category">Категория поиска: копии ищем только среди товаров.</param>
+    public static IReadOnlyList<RedFlag> Detect(Listing listing, double? deviationPercent, int cheapThresholdPercent,
+        SearchCategory category = SearchCategory.General)
     {
         var text = TextUtils.RemovePhrases(TextUtils.Normalize($"{listing.Title} {listing.Description}"), Negations);
         var flags = new List<RedFlag>();
@@ -51,9 +51,9 @@ public static class RedFlagDetector
         if (locks.Count > 0)
             flags.Add(new RedFlag(FlagLevel.Warning, $"Возможна блокировка аккаунта/iCloud (в тексте: «{locks[0]}»)"));
 
-        var replica = TextUtils.FindAll(text, ReplicaWords);
-        if (replica.Count > 0)
-            flags.Add(new RedFlag(FlagLevel.Warning, $"Возможно, копия или реплика (в тексте: «{replica[0]}»)"));
+        var replica = ReplicaDetector.FindMarker(listing, category);
+        if (replica is not null)
+            flags.Add(new RedFlag(FlagLevel.Warning, $"Похоже на копию (в тексте: {replica}) — в рыночной цене не учитывается"));
 
         var scam = TextUtils.FindAll(text, ScamWords);
         if (scam.Count > 0)
@@ -63,10 +63,13 @@ public static class RedFlagDetector
         {
             if (deviation <= -cheapThresholdPercent)
             {
-                // Дёшево, но честно написано, что битый, — это объяснимо. Дёшево без причины — классический обман.
-                flags.Add(defects.Count > 0 || locks.Count > 0
-                    ? new RedFlag(FlagLevel.Info, $"Цена {TextUtils.Percent(deviation)} к рынку — видимо, из-за дефекта")
-                    : new RedFlag(FlagLevel.Danger, $"Подозрительно дёшево ({TextUtils.Percent(deviation)} к рынку) — возможен обман"));
+                // Дёшево, но честно написано, что битый или копия, — это объяснимо. Дёшево без причины — классический обман.
+                if (defects.Count > 0 || locks.Count > 0)
+                    flags.Add(new RedFlag(FlagLevel.Info, $"Цена {TextUtils.Percent(deviation)} к рынку — видимо, из-за дефекта"));
+                else if (replica is not null)
+                    flags.Add(new RedFlag(FlagLevel.Info, $"Цена {TextUtils.Percent(deviation)} к рынку оригиналов"));
+                else
+                    flags.Add(new RedFlag(FlagLevel.Danger, $"Подозрительно дёшево ({TextUtils.Percent(deviation)} к рынку) — возможен обман или копия"));
             }
             else if (deviation <= -15)
             {

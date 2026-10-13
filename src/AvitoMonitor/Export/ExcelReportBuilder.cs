@@ -55,6 +55,8 @@ public sealed class ExcelReportBuilder
         Info("Категория", search.Category.ToRussian());
         Info("Объявлений собрано", rows.Count);
         Info("Сравниваем", market.PerSquareMeter ? "цену за квадратный метр" : "цену");
+        Info("Не учтено в рыночной цене: копии", rows.Count(r => r.Exclusion?.Kind == ExclusionKind.Replica));
+        Info("Не учтено в рыночной цене: другие модели", rows.Count(r => r.Exclusion?.Kind == ExclusionKind.OtherModel));
         Info("Отчёт сформирован", DateTime.Now.ToString("dd.MM.yyyy HH:mm"));
 
         foreach (var source in search.Sources)
@@ -69,7 +71,7 @@ public sealed class ExcelReportBuilder
         // Таблица по группам
         row++;
         var unit = market.PerSquareMeter ? ", ₽ за м²" : ", ₽";
-        WriteHeaderRow(sheet, row, ["Группа", "Объявлений", "Медиана" + unit, "Минимум" + unit, "Максимум" + unit]);
+        WriteHeaderRow(sheet, row, ["Группа", "Объявлений", "Медиана" + unit, "Минимум" + unit, "Максимум" + unit, "Выбросов отброшено"]);
         var firstGroupRow = ++row;
         foreach (var group in GroupKeys.OrderByGroup(market.Groups.Values, g => g.Key))
         {
@@ -78,11 +80,12 @@ public sealed class ExcelReportBuilder
             SetMoney(sheet.Cell(row, 3), group.Median);
             SetMoney(sheet.Cell(row, 4), group.Min);
             SetMoney(sheet.Cell(row, 5), group.Max);
+            sheet.Cell(row, 6).Value = group.Outliers;
             row++;
         }
 
         if (row > firstGroupRow)
-            sheet.Range(firstGroupRow - 1, 1, row - 1, 5).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            sheet.Range(firstGroupRow - 1, 1, row - 1, 6).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
 
         // Кто продаёт
         row++;
@@ -97,7 +100,7 @@ public sealed class ExcelReportBuilder
 
         sheet.Column(1).Width = 42;
         sheet.Column(2).Width = 20;
-        sheet.Columns(3, 5).Width = 20;
+        sheet.Columns(3, 6).Width = 20;
     }
 
     private static void AddListings(IXLWorksheet sheet, IReadOnlyList<ListingAssessment> rows, bool perSquareMeter)
@@ -111,8 +114,8 @@ public sealed class ExcelReportBuilder
         columns.AddRange(
         [
             ("Медиана группы", 16), ("Отклонение от рынка", 12), ("Пометки", 50), ("Продавец", 24),
-            ("Тип продавца", 28), ("Почему так решили", 45), ("Адрес", 35), ("Опубликовано", 18),
-            ("Впервые замечено", 17), ("Ссылка", 12),
+            ("Отзывов у продавца", 11), ("Тип продавца", 28), ("Почему так решили", 45), ("Значки Авито", 35),
+            ("Адрес", 35), ("Опубликовано", 18), ("Впервые замечено", 17), ("Ссылка", 12),
         ]);
 
         WriteHeaderRow(sheet, 1, columns.Select(c => c.Header).ToList());
@@ -147,8 +150,12 @@ public sealed class ExcelReportBuilder
                 flagsCell.Style.Font.FontColor = XLColor.Red;
 
             sheet.Cell(row, col++).Value = a.Listing.SellerName ?? "";
+            var reviewsCell = sheet.Cell(row, col++);
+            if (a.Listing.SellerReviews is { } reviews)
+                reviewsCell.Value = reviews;
             sheet.Cell(row, col++).Value = a.Seller.Title;
             sheet.Cell(row, col++).Value = string.Join("; ", a.Seller.Reasons);
+            sheet.Cell(row, col++).Value = a.Listing.Badges ?? "";
             sheet.Cell(row, col++).Value = a.Listing.Address ?? "";
             sheet.Cell(row, col++).Value = a.Listing.PublishedText ?? "";
 

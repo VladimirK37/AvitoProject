@@ -28,14 +28,18 @@ public sealed class Listing
     public string? SellerName { get; set; }
 
     /// <summary>
-    /// Ссылка на профиль продавца. У компаний на Авито она вида /brands/..., у частных лиц — /user/....
+    /// Ссылка на профиль продавца: /brands/i12345678 (обычный профиль — и у частников, и у компаний)
+    /// или /brands/smart-butik (фирменная страница магазина).
     /// </summary>
     public string? SellerUrl { get; set; }
+
+    /// <summary>Сколько отзывов у продавца. Сотни отзывов — признак магазина или перекупщика.</summary>
+    public int? SellerReviews { get; set; }
 
     /// <summary>Подпись Авито о продавце со страницы объявления: «Частное лицо», «Компания», «Агентство»…</summary>
     public string? SellerLabel { get; set; }
 
-    /// <summary>Значки на карточке («Собственник», «Гарантия», «Документы проверены» и т. п.).</summary>
+    /// <summary>Значки Авито на карточке («Цена ниже рыночной», «Надёжный продавец», «Документы проверены»…).</summary>
     public string? Badges { get; set; }
 
     /// <summary>Из какой ссылки поиска пришло объявление (важно для мультипоиска).</summary>

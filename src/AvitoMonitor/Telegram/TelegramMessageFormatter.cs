@@ -42,7 +42,11 @@ public static class TelegramMessageFormatter
             text.AppendLine($"📦 Группа: {Escape(assessment.GroupKey)} ({scope})");
         }
 
-        var seller = string.IsNullOrWhiteSpace(listing.SellerName) ? "" : Escape(listing.SellerName) + " — ";
+        var seller = string.IsNullOrWhiteSpace(listing.SellerName) ? "" : Escape(listing.SellerName);
+        if (listing.SellerReviews is { } reviews)
+            seller += $" ({reviews} отз.)";
+        if (seller.Length > 0)
+            seller += " — ";
         text.AppendLine($"👤 {seller}{Escape(assessment.Seller.Title)}");
         if (assessment.Seller.IsBusiness && assessment.Seller.Reasons.Count > 0)
             text.AppendLine($"     <i>{Escape(string.Join("; ", assessment.Seller.Reasons))}</i>");
