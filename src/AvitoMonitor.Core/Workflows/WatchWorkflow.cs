@@ -15,7 +15,7 @@ namespace AvitoMonitor.Workflows;
 /// </summary>
 public sealed class WatchWorkflow(
     AvitoBrowser browser,
-    SearchRepository repository,
+    ISearchStore store,
     AppSettings settings,
     SearchAnalyzer analyzer,
     TelegramNotifier telegram,
@@ -31,9 +31,10 @@ public sealed class WatchWorkflow(
     /// <param name="onNewListing">Что сделать с каждым новым объявлением (показать в интерфейсе).</param>
     public async Task<int> CheckOnceAsync(SavedSearch search, Action<ListingAssessment> onNewListing, CancellationToken ct)
     {
-        var listings = repository.LoadListings(search.Id);
+        var listings = store.LoadListings(search.Id);
         var isFirstCheck = listings.Count == 0;
         var newListings = new List<Listing>();
+        var touchedIds = new HashSet<string>(); // какие объявления встретились — их и сохраним
         var now = DateTime.Now;
 
         foreach (var source in search.Sources)
@@ -47,6 +48,7 @@ public sealed class WatchWorkflow(
 
                 ListingMerger.Merge(listings, page.Items, source.Label, now);
                 newListings.AddRange(fresh);
+                touchedIds.UnionWith(page.Items.Select(item => item.Id));
 
                 // На странице встретились уже знакомые объявления — значит, все новые мы уже увидели
                 if (fresh.Count < page.Items.Count || page.Items.Count == 0 || page.HasNextPage == false)
@@ -59,8 +61,8 @@ public sealed class WatchWorkflow(
         if (isFirstCheck)
         {
             // Без этого в первый раз в Telegram прилетели бы десятки «новых» объявлений
-            repository.SaveListings(search.Id, listings);
-            repository.Save(search);
+            store.UpsertListings(search.Id, touchedIds.Select(id => listings[id]));
+            store.SaveSearch(search);
             logger.LogInformation("«{Search}»: первый запуск — запомнил {Count} текущих объявлений, дальше буду присылать только новые. " +
                                   "Для точной рыночной цены сделайте «Сканировать».", search.Name, listings.Count);
             return 0;
@@ -69,8 +71,8 @@ public sealed class WatchWorkflow(
         if (settings.OpenNewListingsForDetails)
             await LoadDetailsAsync(search, newListings.Take(MaxDetailsPerCheck), ct);
 
-        repository.SaveListings(search.Id, listings);
-        repository.Save(search);
+        store.UpsertListings(search.Id, touchedIds.Select(id => listings[id]));
+        store.SaveSearch(search);
 
         if (newListings.Count == 0)
         {

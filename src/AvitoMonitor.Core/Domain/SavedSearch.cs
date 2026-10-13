@@ -28,16 +28,36 @@ public sealed class SavedSearch
 
     [JsonIgnore]
     public bool IsMulti => Sources.Count > 1;
+
+    /// <summary>Новый номер поиска: дата и время с миллисекундами, например 20261013-153000-123.</summary>
+    public static string NewId() => DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
 }
 
-/// <summary>Одна ссылка внутри поиска и прогресс её сканирования.</summary>
+/// <summary>
+/// Один запрос внутри поиска и прогресс его сканирования.
+/// Обычно это слова + город (+ цена), а ссылку программа составляет сама.
+/// Старые поиски, созданные по готовой ссылке, хранят только Url (Query = null).
+/// </summary>
 public sealed class SearchSource
 {
-    /// <summary>Короткое название ссылки, например «iPhone 15».</summary>
+    /// <summary>Короткое название, например «iPhone 15».</summary>
     public string Label { get; set; } = "";
 
-    /// <summary>Ссылка на страницу поиска Авито со всеми фильтрами.</summary>
+    /// <summary>Что ищем — слова, как в строке поиска Авито. null — поиск задан готовой ссылкой.</summary>
+    public string? Query { get; set; }
+
+    /// <summary>Город (slug из адреса Авито, например sankt-peterburg).</summary>
+    public string? City { get; set; }
+
+    public int? PriceMin { get; set; }
+
+    public int? PriceMax { get; set; }
+
+    /// <summary>Ссылка на страницу поиска Авито (для поиска по словам составляется автоматически).</summary>
     public string Url { get; set; } = "";
+
+    [JsonIgnore]
+    public bool IsKeywordSearch => !string.IsNullOrWhiteSpace(Query);
 
     /// <summary>С какой страницы продолжать сканирование («Дособрать»).</summary>
     public int NextPageToScan { get; set; } = 1;

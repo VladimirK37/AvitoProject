@@ -17,6 +17,7 @@ public sealed class AppPaths
         Directory.CreateDirectory(SearchesDir);
         Directory.CreateDirectory(DebugDir);
         Directory.CreateDirectory(LogsDir);
+        Directory.CreateDirectory(ReportsDir);
     }
 
     /// <summary>Корневая папка с данными.</summary>
@@ -25,8 +26,14 @@ public sealed class AppPaths
     /// <summary>Настройки: токен бота, паузы, интервалы.</summary>
     public string SettingsFile => Path.Combine(Root, "settings.json");
 
-    /// <summary>Сохранённые поиски: в каждой подпапке ссылка, собранные объявления и Excel-отчёт.</summary>
+    /// <summary>
+    /// Поиски в JSON-файлах — так программа хранила данные до перехода на PostgreSQL.
+    /// При первом запуске с базой они переносятся туда автоматически.
+    /// </summary>
     public string SearchesDir => Path.Combine(Root, "searches");
+
+    /// <summary>Excel-отчёты: по файлу на каждый сбор (записи о них — в базе данных).</summary>
+    public string ReportsDir => Path.Combine(Root, "reports");
 
     /// <summary>Профиль браузера программы (cookies Авито), отдельный от вашего обычного браузера.</summary>
     public string BrowserProfileDir => Path.Combine(Root, "browser-profile");

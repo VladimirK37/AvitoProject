@@ -176,31 +176,45 @@
                   <TextBlock Classes="hint"
                              Text="Товары — группы по памяти и шумоподавлению; недвижимость — по комнатам, сравнивается цена за м²; авто — по году выпуска." />
 
-                  <TextBlock Classes="h2" Text="Ссылки на поиск Авито" />
+                  <TextBlock Classes="h2" Text="Что ищем" />
                   <TextBlock Classes="hint"
-                             Text="Несколько ссылок — это мультипоиск (например, отдельно iPhone 15, 16 и 17): цены сравниваются внутри каждой ссылки. Если поменять ссылку, собранные по ней объявления удалятся и сбор начнётся заново." />
+                             Text="Несколько запросов — это мультипоиск (например, отдельно iPhone 15, 16 и 17): цены сравниваются внутри каждого запроса. Если поменять слова, город или цену, собранные по запросу объявления удалятся и сбор начнётся заново." />
 
                   <ItemsControl ItemsSource="{Binding Sources}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
                         <Border BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
-                          <Grid ColumnDefinitions="200,8,*,8,Auto,Auto">
-                            <TextBox Grid.Column="0" Text="{Binding Label}" Watermark="Название, напр. iPhone 15" />
-                            <TextBox Grid.Column="2" Text="{Binding Url}" Watermark="https://www.avito.ru/..." />
-                            <Button Grid.Column="4" Content="Открыть" Margin="0,0,6,0"
-                                    Command="{Binding $parent[ItemsControl].DataContext.OpenUrlCommand}"
-                                    CommandParameter="{Binding}" />
-                            <Button Grid.Column="5" Content="Удалить"
-                                    Command="{Binding $parent[ItemsControl].DataContext.RemoveSourceCommand}"
-                                    CommandParameter="{Binding}" />
-                          </Grid>
+                          <StackPanel Spacing="6">
+                            <!-- Поиск по словам -->
+                            <Grid ColumnDefinitions="*,8,200,8,110,6,110" IsVisible="{Binding IsKeyword}">
+                              <TextBox Grid.Column="0" Text="{Binding Query}" Watermark="Что ищем, напр. iphone 15 128" />
+                              <ComboBox Grid.Column="2" ItemsSource="{Binding Cities}" SelectedItem="{Binding SelectedCity}"
+                                        HorizontalAlignment="Stretch" />
+                              <NumericUpDown Grid.Column="4" Value="{Binding PriceMin}" Watermark="от, ₽" Minimum="0"
+                                             Increment="1000" FormatString="0" ShowButtonSpinner="False" />
+                              <NumericUpDown Grid.Column="6" Value="{Binding PriceMax}" Watermark="до, ₽" Minimum="0"
+                                             Increment="1000" FormatString="0" ShowButtonSpinner="False" />
+                            </Grid>
+                            <!-- Старые поиски — готовая ссылка -->
+                            <TextBox Text="{Binding Url}" Watermark="https://www.avito.ru/..." IsVisible="{Binding IsUrl}" />
+                            <Grid ColumnDefinitions="Auto,8,260,*,Auto,Auto">
+                              <TextBlock Grid.Column="0" Text="Название:" VerticalAlignment="Center" />
+                              <TextBox Grid.Column="2" Text="{Binding Label}" Watermark="Короткое название" />
+                              <Button Grid.Column="4" Content="Открыть на Авито" Margin="0,0,6,0"
+                                      Command="{Binding $parent[ItemsControl].DataContext.OpenOnAvitoCommand}"
+                                      CommandParameter="{Binding}" />
+                              <Button Grid.Column="5" Content="Удалить"
+                                      Command="{Binding $parent[ItemsControl].DataContext.RemoveSourceCommand}"
+                                      CommandParameter="{Binding}" />
+                            </Grid>
+                          </StackPanel>
                         </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
 
                   <WrapPanel>
-                    <Button Content="+ Добавить ссылку" Command="{Binding AddSourceCommand}" />
+                    <Button Content="+ Добавить запрос" Command="{Binding AddSourceCommand}" />
                   </WrapPanel>
                   <WrapPanel>
                     <Button Classes="accent" Content="Сохранить изменения" Command="{Binding SaveCommand}" />
@@ -246,21 +260,49 @@
       </DockPanel>
     </Border>
 
-    <TabControl Margin="8,4">
+    <TabControl Margin="8,4" SelectedIndex="{Binding MainTab}">
 
-      <!-- Поиски: список слева, выбранный поиск справа -->
+      <!-- Поиски: форма и список слева, выбранный поиск справа -->
       <TabItem Header="Поиски">
         <Grid ColumnDefinitions="330,12,*">
           <DockPanel Grid.Column="0">
+            <!-- Поиск по словам: ссылку на Авито программа составит сама. Enter — «Найти». -->
             <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,4,0,10">
-              <TextBlock Classes="h2" Text="Новый поиск" Margin="0" />
-              <TextBlock Classes="hint"
-                         Text="Настройте поиск и фильтры на avito.ru и вставьте ссылку из адресной строки." />
-              <TextBox Text="{Binding NewSearchUrl}" Watermark="https://www.avito.ru/..." />
-              <Button Classes="accent" Content="Добавить поиск" Command="{Binding AddSearchCommand}"
+              <StackPanel.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding FindCommand}" />
+              </StackPanel.KeyBindings>
+
+              <TextBlock Classes="h2" Text="Что ищем на Авито" Margin="0" />
+              <AutoCompleteBox Text="{Binding Keywords, Mode=TwoWay}" Watermark="Например: airpods 4"
+                               AsyncPopulator="{Binding SuggestionsPopulator}" FilterMode="None"
+                               MinimumPrefixLength="1" MinimumPopulateDelay="0:0:0.3"
+                               ValueMemberBinding="{Binding Text}"
+                               SelectedItem="{Binding SelectedSuggestion, Mode=TwoWay}">
+                <AutoCompleteBox.ItemTemplate>
+                  <DataTemplate>
+                    <StackPanel Margin="0,2">
+                      <TextBlock Text="{Binding Text}" FontWeight="SemiBold" />
+                      <TextBlock Classes="hint" FontSize="11" Text="{Binding Display}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </AutoCompleteBox.ItemTemplate>
+              </AutoCompleteBox>
+              <ComboBox ItemsSource="{Binding Cities}" SelectedItem="{Binding SelectedCity}" HorizontalAlignment="Stretch" />
+              <Grid ColumnDefinitions="*,6,*">
+                <NumericUpDown Grid.Column="0" Value="{Binding PriceMin}" Watermark="Цена от, ₽" Minimum="0"
+                               Increment="1000" FormatString="0" ShowButtonSpinner="False" />
+                <NumericUpDown Grid.Column="2" Value="{Binding PriceMax}" Watermark="до, ₽" Minimum="0"
+                               Increment="1000" FormatString="0" ShowButtonSpinner="False" />
+              </Grid>
+              <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" HorizontalAlignment="Stretch"
+                        ToolTip.Tip="От категории зависит группировка и что сравнивается с рынком" />
+              <CheckBox Content="После сбора следить за новыми" IsChecked="{Binding WatchAfterScan}" />
+              <Button Classes="accent" Content="Найти" Command="{Binding FindCommand}"
                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-              <TextBlock Classes="error" Text="{Binding NewSearchError}"
-                         IsVisible="{Binding NewSearchError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Classes="error" Text="{Binding SearchFormError}"
+                         IsVisible="{Binding SearchFormError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Classes="hint" FontSize="12"
+                         Text="Запрос сохранится в историю. После сбора сам создастся Excel-отчёт (вкладка «Отчёты»)." />
               <TextBlock Classes="h2" Text="Мои поиски" />
             </StackPanel>
 
@@ -278,7 +320,7 @@
           </DockPanel>
 
           <Panel Grid.Column="2">
-            <TextBlock Classes="hint" Text="Добавьте поиск слева или выберите сохранённый."
+            <TextBlock Classes="hint" Text="Напишите слева, что ищем, и нажмите «Найти» — или выберите сохранённый поиск."
                        HorizontalAlignment="Center" VerticalAlignment="Center"
                        IsVisible="{Binding SelectedSearch, Converter={x:Static ObjectConverters.IsNull}}" />
             <ContentControl Content="{Binding SelectedSearch}" />
@@ -310,6 +352,87 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
+        </DockPanel>
+      </TabItem>
+
+      <!-- История всего, что вводили в поиск (Elasticsearch / PostgreSQL) -->
+      <TabItem Header="История запросов">
+        <DockPanel DataContext="{Binding HistoryTab}">
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,4,0,6">
+            <WrapPanel>
+              <TextBox Width="360" Text="{Binding FilterText}" Watermark="Найти в истории (можно с опечатками)" Margin="0,0,12,6" />
+              <Button Content="Обновить" Command="{Binding RefreshCommand}" />
+            </WrapPanel>
+            <TextBlock Classes="hint" Text="{Binding StatusText}" />
+          </StackPanel>
+          <ListBox ItemsSource="{Binding Entries}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Display}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Classes="hint" Text="{Binding Details}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Content="В поле поиска" Margin="6,0" VerticalAlignment="Center"
+                          Command="{Binding $parent[ListBox].DataContext.UseCommand}" CommandParameter="{Binding}" />
+                  <Button Grid.Column="2" Classes="accent" Content="Искать снова" VerticalAlignment="Center"
+                          Command="{Binding $parent[ListBox].DataContext.RunCommand}" CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+
+      <!-- Excel-отчёты из базы данных -->
+      <TabItem Header="Отчёты">
+        <DockPanel DataContext="{Binding ReportsTab}">
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,4,0,6">
+            <WrapPanel>
+              <TextBox Width="360" Text="{Binding FilterText}" Watermark="Фильтр по названию поиска или запросу" Margin="0,0,12,6" />
+              <Button Content="Обновить" Command="{Binding LoadCommand}" />
+              <Button Content="Открыть папку с отчётами" Command="{Binding OpenFolderCommand}" />
+            </WrapPanel>
+            <TextBlock Classes="hint" Text="{Binding StatusText}" />
+          </StackPanel>
+          <DataGrid ItemsSource="{Binding Items}" IsReadOnly="True" AutoGenerateColumns="False"
+                    CanUserSortColumns="True" CanUserResizeColumns="True" GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="" Width="190">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="4,2">
+                      <Button Content="Открыть" Padding="8,2"
+                              Command="{Binding $parent[DataGrid].DataContext.OpenCommand}" CommandParameter="{Binding}" />
+                      <Button Content="Удалить" Padding="8,2"
+                              Command="{Binding $parent[DataGrid].DataContext.DeleteCommand}" CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Дата" Binding="{Binding CreatedText}" SortMemberPath="CreatedAt" Width="140" />
+              <DataGridTextColumn Header="Поиск" Binding="{Binding SearchName}" Width="180" />
+              <DataGridTextColumn Header="Что искали" Binding="{Binding Description}" Width="280" />
+              <DataGridTextColumn Header="Объявлений" Binding="{Binding ListingsCount}" Width="110" />
+              <DataGridTextColumn Header="Копий и др. моделей" Binding="{Binding ExcludedCount}" Width="160" />
+              <DataGridTemplateColumn Header="Рыночные цены" SortMemberPath="Summary" Width="380">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Summary}" ToolTip.Tip="{Binding Summary}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" Margin="12,0" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="Файл" SortMemberPath="FileName" Width="280">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" Margin="12,0" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
         </DockPanel>
       </TabItem>
 
@@ -384,8 +507,18 @@
             </WrapPanel>
             <TextBlock Classes="ok" Text="{Binding SaveResult}" />
 
+            <TextBlock Classes="h1" Text="Базы данных" Margin="0,16,0,0" />
+            <TextBlock Classes="hint"
+                       Text="Запускаются командой «docker compose up -d» в папке проекта (нужен Docker Desktop). Адреса подключения — в settings.json, после изменения перезапустите программу." />
+            <TextBlock Text="{Binding DatabaseStatus}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ElasticStatus}" TextWrapping="Wrap" />
+            <WrapPanel>
+              <Button Content="Проверить Elasticsearch и синхронизировать историю" Command="{Binding SyncElasticCommand}" />
+            </WrapPanel>
+            <TextBlock Classes="hint" Text="{Binding ElasticSyncResult}" />
+
             <TextBlock Classes="h1" Text="Данные" Margin="0,16,0,0" />
-            <TextBlock Classes="hint" Text="Поиски, объявления, таблицы Excel, журналы и профиль браузера хранятся здесь:" />
+            <TextBlock Classes="hint" Text="Excel-отчёты, журналы и профиль браузера хранятся здесь (поиски и объявления — в PostgreSQL):" />
             <TextBlock Text="{Binding DataFolder}" />
             <WrapPanel>
               <Button Content="Открыть папку с данными" Command="{Binding OpenDataFolderCommand}" />

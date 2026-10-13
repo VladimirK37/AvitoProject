@@ -29,14 +29,14 @@ public sealed partial class SearchItemViewModel : ObservableObject
     private string? _scanProgressText;
 
     public SearchItemViewModel(SavedSearch model, MonitorService monitor, ReportService reports,
-        SearchRepository repository, SearchCatalog catalog, ILogger logger)
+        ISearchStore store, SearchCatalog catalog, ILogger logger)
     {
         Model = model;
         _monitor = monitor;
         _reports = reports;
         _logger = logger;
 
-        Editor = new SearchEditorViewModel(model, repository, catalog, logger);
+        Editor = new SearchEditorViewModel(model, store, catalog, logger);
         Editor.Saved += OnEditorSaved;
 
         RefreshTitle();
@@ -141,14 +141,15 @@ public sealed partial class SearchItemViewModel : ObservableObject
         Message = null;
     }
 
+    /// <summary>Новый Excel-отчёт: файл в папке reports + запись в базе (виден на вкладке «Отчёты»).</summary>
     [RelayCommand]
     private async Task OpenExcelAsync()
     {
         Message = "Строю таблицу Excel…";
         try
         {
-            var path = await Task.Run(() => _reports.BuildExcel(Model));
-            Message = SystemShell.Open(path) ? null : $"Таблица сохранена: {path} (программа для .xlsx не найдена)";
+            var report = await Task.Run(() => _reports.CreateReport(Model));
+            Message = SystemShell.Open(report.FilePath) ? null : $"Таблица сохранена: {report.FilePath} (программа для .xlsx не найдена)";
         }
         catch (Exception ex)
         {
@@ -170,6 +171,18 @@ public sealed partial class SearchItemViewModel : ObservableObject
     private void ConfirmDeleteSearch() => DeleteConfirmed?.Invoke(this);
 
     private bool CanStart() => !IsBusy;
+
+    /// <summary>Запуск сбора после нажатия «Найти» в форме нового поиска.</summary>
+    public void StartFromSearchForm(bool thenWatch)
+    {
+        if (IsBusy)
+        {
+            Message = "По этому поиску уже идёт работа — дождитесь окончания или нажмите «Стоп».";
+            return;
+        }
+
+        StartSafely(() => _monitor.StartScan(Model, restart: true, thenWatch));
+    }
 
     private void StartSafely(Action start)
     {

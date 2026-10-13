@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using AvitoMonitor.Avito;
 using AvitoMonitor.Domain;
 using AvitoMonitor.Export;
+using AvitoMonitor.History;
 using AvitoMonitor.Storage;
 using AvitoMonitor.Workflows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,29 +13,36 @@ using Microsoft.Extensions.Logging;
 namespace AvitoMonitor.Desktop.ViewModels;
 
 /// <summary>
-/// Главное окно: список поисков, лента новых объявлений, журнал и настройки.
+/// Главное окно: форма поиска, список поисков, лента новых объявлений, история, отчёты, журнал и настройки.
 /// Подписывается на события фоновых задач (MonitorService) и переносит их в поток интерфейса.
 /// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject
 {
+    public const int SearchesTab = 0;
+
     private const int FeedLimit = 500;
 
     private readonly SearchCatalog _catalog;
-    private readonly SearchRepository _repository;
+    private readonly ISearchStore _store;
     private readonly MonitorService _monitor;
     private readonly ReportService _reports;
+    private readonly QueryHistoryService _history;
     private readonly ILogger<MainWindowViewModel> _logger;
 
-    public MainWindowViewModel(SearchCatalog catalog, SearchRepository repository, MonitorService monitor,
-        ReportService reports, SettingsViewModel settings, LogViewModel log, ILogger<MainWindowViewModel> logger)
+    public MainWindowViewModel(SearchCatalog catalog, ISearchStore store, MonitorService monitor, ReportService reports,
+        QueryHistoryService history, SettingsViewModel settings, LogViewModel log, HistoryViewModel historyTab,
+        ReportsViewModel reportsTab, ILogger<MainWindowViewModel> logger)
     {
         _catalog = catalog;
-        _repository = repository;
+        _store = store;
         _monitor = monitor;
         _reports = reports;
+        _history = history;
         _logger = logger;
         Settings = settings;
         Log = log;
+        HistoryTab = historyTab;
+        ReportsTab = reportsTab;
 
         foreach (var search in catalog.All)
             Searches.Add(CreateItem(search));
@@ -47,6 +55,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         monitor.NewListingFound += (search, assessment) => OnUi(() => AddToFeed(search, assessment));
         monitor.CheckRequired += message => OnUi(() => Banner = message);
         monitor.CheckPassed += () => OnUi(() => Banner = null);
+
+        historyTab.UseRequested += (entry, run) => _ = UseHistoryEntryAsync(entry, run);
     }
 
     public ObservableCollection<SearchItemViewModel> Searches { get; } = new();
@@ -57,14 +67,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public LogViewModel Log { get; }
 
+    public HistoryViewModel HistoryTab { get; }
+
+    public ReportsViewModel ReportsTab { get; }
+
+    [ObservableProperty]
+    private int _mainTab;
+
     [ObservableProperty]
     private SearchItemViewModel? _selectedSearch;
-
-    [ObservableProperty]
-    private string _newSearchUrl = "";
-
-    [ObservableProperty]
-    private string? _newSearchError;
 
     /// <summary>Жёлтая полоса сверху: «Авито просит пройти проверку».</summary>
     [ObservableProperty]
@@ -75,34 +86,116 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     partial void OnSelectedSearchChanged(SearchItemViewModel? value) => value?.EnsureLoaded();
 
-    [RelayCommand]
-    private void AddSearch()
+    // ===================================================================
+    // Форма «Что ищем на Авито»
+    // ===================================================================
+
+    public IReadOnlyList<AvitoCity> Cities => AvitoCities.All;
+
+    public IReadOnlyList<CategoryOption> Categories => CategoryOption.All;
+
+    [ObservableProperty]
+    private string _keywords = "";
+
+    [ObservableProperty]
+    private AvitoCity _selectedCity = AvitoCities.Find(AvitoCities.DefaultSlug);
+
+    [ObservableProperty]
+    private decimal? _priceMin;
+
+    [ObservableProperty]
+    private decimal? _priceMax;
+
+    [ObservableProperty]
+    private CategoryOption _selectedCategory = CategoryOption.Of(SearchCategory.General);
+
+    [ObservableProperty]
+    private bool _watchAfterScan = true;
+
+    [ObservableProperty]
+    private string? _searchFormError;
+
+    /// <summary>Выбрали подсказку из истории — подставляем и город с ценой.</summary>
+    [ObservableProperty]
+    private QueryHistoryEntry? _selectedSuggestion;
+
+    partial void OnSelectedSuggestionChanged(QueryHistoryEntry? value)
     {
-        if (!AvitoUrl.TryParseSearchUrl(NewSearchUrl, out var url, out var error))
+        if (value is not null)
+            FillForm(value);
+    }
+
+    /// <summary>Подсказки под полем поиска: история запросов (Elasticsearch или PostgreSQL).</summary>
+    public Func<string?, CancellationToken, Task<IEnumerable<object>>> SuggestionsPopulator => LoadSuggestionsAsync;
+
+    /// <summary>
+    /// «Найти»: запоминает запрос в истории, создаёт поиск (или берёт такой же существующий)
+    /// и запускает сбор. После сбора сам создаётся Excel-отчёт, а при галочке — включается слежение.
+    /// </summary>
+    [RelayCommand]
+    private async Task FindAsync()
+    {
+        var query = Keywords.Trim();
+        if (query.Length == 0)
         {
-            NewSearchError = error;
+            SearchFormError = "Напишите, что искать, например: airpods 4";
             return;
         }
 
-        var name = AvitoUrl.SuggestName(url);
-        var search = new SavedSearch
+        var request = new SearchRequest(query, SelectedCity.Slug, SourceEditViewModel.ToInt(PriceMin), SourceEditViewModel.ToInt(PriceMax));
+        if (request.PriceMin is { } min && request.PriceMax is { } max && min > max)
         {
-            Id = SearchRepository.NewId(),
-            Name = name,
-            Category = AvitoUrl.DetectCategory(url),
-            CreatedAt = DateTime.Now,
-            Sources = [new SearchSource { Label = name, Url = url.ToString() }],
-        };
-        _catalog.Add(search);
-        _logger.LogInformation("Добавлен поиск «{Search}» ({Category})", search.Name, search.Category.ToRussian());
+            SearchFormError = "Цена «от» больше цены «до».";
+            return;
+        }
 
-        var item = CreateItem(search);
-        Searches.Add(item);
+        SearchFormError = null;
+
+        // Такой же поиск уже есть — используем его, чтобы не плодить дубликаты
+        var item = Searches.FirstOrDefault(s => s.Model.Sources.Count == 1 && IsSameRequest(s.Model.Sources[0], request));
+        if (item is null)
+        {
+            var search = new SavedSearch
+            {
+                Id = SavedSearch.NewId(),
+                Name = query,
+                Category = SelectedCategory.Value,
+                CreatedAt = DateTime.Now,
+                Sources =
+                [
+                    new SearchSource
+                    {
+                        Label = query,
+                        Query = query,
+                        City = request.City,
+                        PriceMin = request.PriceMin,
+                        PriceMax = request.PriceMax,
+                        Url = request.ToUrl().ToString(),
+                    },
+                ],
+            };
+
+            _catalog.Add(search);
+            item = CreateItem(search);
+            Searches.Add(item);
+            _logger.LogInformation("Новый поиск: {Request}", request.Describe());
+        }
+
         SelectedSearch = item;
-        item.SelectedTab = SearchItemViewModel.EditorTab; // сразу дать поправить название и категорию
+        item.SelectedTab = SearchItemViewModel.ListingsTab;
+        MainTab = SearchesTab;
 
-        NewSearchUrl = "";
-        NewSearchError = null;
+        try
+        {
+            await _history.RecordAsync(request, item.Model.Id);
+            await HistoryTab.RefreshCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось сохранить запрос в историю: {Message}", ex.Message);
+        }
+
+        item.StartFromSearchForm(WatchAfterScan);
     }
 
     [RelayCommand]
@@ -115,9 +208,47 @@ public sealed partial class MainWindowViewModel : ObservableObject
         FeedHeader = "Новые объявления";
     }
 
+    private async Task<IEnumerable<object>> LoadSuggestionsAsync(string? text, CancellationToken ct)
+    {
+        try
+        {
+            var (entries, _) = await _history.SearchAsync(text ?? "", 10, ct);
+            return entries;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("Не удалось получить подсказки из истории: {Message}", ex.Message);
+            return [];
+        }
+    }
+
+    private async Task UseHistoryEntryAsync(QueryHistoryEntry entry, bool run)
+    {
+        FillForm(entry);
+        MainTab = SearchesTab;
+        if (run)
+            await FindAsync();
+    }
+
+    private void FillForm(QueryHistoryEntry entry)
+    {
+        Keywords = entry.Text;
+        SelectedCity = AvitoCities.Find(entry.City);
+        PriceMin = entry.PriceMin;
+        PriceMax = entry.PriceMax;
+    }
+
+    private static bool IsSameRequest(SearchSource source, SearchRequest request) =>
+        string.Equals(source.Query?.Trim(), request.Query, StringComparison.OrdinalIgnoreCase)
+        && source.City == request.City
+        && source.PriceMin == request.PriceMin
+        && source.PriceMax == request.PriceMax;
+
+    // ===================================================================
+
     private SearchItemViewModel CreateItem(SavedSearch search)
     {
-        var item = new SearchItemViewModel(search, _monitor, _reports, _repository, _catalog, _logger);
+        var item = new SearchItemViewModel(search, _monitor, _reports, _store, _catalog, _logger);
         item.DeleteConfirmed += item => _ = DeleteAsync(item);
         return item;
     }
@@ -126,7 +257,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         await _monitor.StopAsync(item.Model);
         _catalog.Delete(item.Model);
-        _logger.LogInformation("Удалён поиск «{Search}»", item.Model.Name);
+        _logger.LogInformation("Удалён поиск «{Search}» (отчёты по нему остались на вкладке «Отчёты»)", item.Model.Name);
 
         Searches.Remove(item);
         SelectedSearch = Searches.FirstOrDefault();

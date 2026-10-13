@@ -54,6 +54,22 @@ public static class AvitoUrl
         return true;
     }
 
+    /// <summary>
+    /// Составляет ссылку на поиск по словам: город — в адресе, слова — в q=, цена — в pmin/pmax.
+    /// Категорию Авито определит сам по словам (и перенаправит на неё).
+    /// </summary>
+    public static Uri BuildSearchUrl(SearchRequest request)
+    {
+        var parts = new List<string> { "q=" + Uri.EscapeDataString(request.Query.Trim()).Replace("%20", "+") };
+        if (request.PriceMin is > 0)
+            parts.Add($"pmin={request.PriceMin}");
+        if (request.PriceMax is > 0)
+            parts.Add($"pmax={request.PriceMax}");
+
+        var city = string.IsNullOrWhiteSpace(request.City) ? AvitoCities.DefaultSlug : request.City.Trim();
+        return new Uri($"{BaseUrl}/{city}?{string.Join("&", parts)}");
+    }
+
     /// <summary>Ссылка на конкретную страницу выдачи (параметр p).</summary>
     public static Uri WithPage(Uri searchUrl, int page) =>
         SetQueryParameter(searchUrl, "p", page <= 1 ? null : page.ToString());

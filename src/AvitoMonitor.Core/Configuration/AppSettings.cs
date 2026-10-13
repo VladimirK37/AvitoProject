@@ -8,6 +8,20 @@ namespace AvitoMonitor.Configuration;
 /// </summary>
 public sealed class AppSettings
 {
+    // ----- Базы данных (запускаются через docker compose, см. README) -----
+
+    /// <summary>
+    /// PostgreSQL: поиски, объявления, история запросов и записи об отчётах.
+    /// Порт 5433, чтобы не мешать PostgreSQL, который может быть установлен на компьютере.
+    /// </summary>
+    public string DatabaseConnectionString { get; set; } =
+        "Host=localhost;Port=5433;Database=avito;Username=avito;Password=avito_local";
+
+    /// <summary>Elasticsearch: полнотекстовый поиск по истории запросов. Если недоступен — ищем по PostgreSQL.</summary>
+    public string ElasticsearchUrl { get; set; } = "http://localhost:9200";
+
+    /// <summary>Индекс Elasticsearch с историей запросов.</summary>
+    public string ElasticsearchIndex { get; set; } = "avito-queries";
     // ----- Telegram -----
 
     /// <summary>Токен бота от @BotFather (вида 123456789:AA...).</summary>

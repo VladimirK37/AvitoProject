@@ -9,14 +9,14 @@ namespace AvitoMonitor.Storage;
 /// </summary>
 public sealed class SearchCatalog
 {
-    private readonly SearchRepository _repository;
+    private readonly ISearchStore _store;
     private readonly List<SavedSearch> _searches;
     private readonly object _lock = new();
 
-    public SearchCatalog(SearchRepository repository)
+    public SearchCatalog(ISearchStore store)
     {
-        _repository = repository;
-        _searches = repository.GetAll().ToList();
+        _store = store;
+        _searches = store.GetSearches().ToList();
     }
 
     public IReadOnlyList<SavedSearch> All
@@ -30,19 +30,19 @@ public sealed class SearchCatalog
 
     public void Add(SavedSearch search)
     {
+        _store.SaveSearch(search);
+
         lock (_lock)
             _searches.Add(search);
-
-        _repository.Save(search);
     }
 
-    public void Save(SavedSearch search) => _repository.Save(search);
+    public void Save(SavedSearch search) => _store.SaveSearch(search);
 
     public void Delete(SavedSearch search)
     {
         lock (_lock)
             _searches.Remove(search);
 
-        _repository.Delete(search);
+        _store.DeleteSearch(search.Id);
     }
 }

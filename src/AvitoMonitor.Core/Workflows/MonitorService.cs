@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using AvitoMonitor.Avito;
 using AvitoMonitor.Configuration;
 using AvitoMonitor.Domain;
+using AvitoMonitor.Export;
 using AvitoMonitor.Storage;
 using AvitoMonitor.Telegram;
 using Microsoft.Extensions.Logging;
@@ -30,16 +31,18 @@ public sealed class MonitorService : IAsyncDisposable
     private readonly WatchWorkflow _watch;
     private readonly SearchCatalog _catalog;
     private readonly TelegramNotifier _telegram;
+    private readonly ReportService _reports;
     private readonly AppSettings _settings;
     private readonly ILogger<MonitorService> _logger;
 
     public MonitorService(ScanWorkflow scan, WatchWorkflow watch, SearchCatalog catalog, AvitoBrowser browser,
-        TelegramNotifier telegram, AppSettings settings, ILogger<MonitorService> logger)
+        TelegramNotifier telegram, ReportService reports, AppSettings settings, ILogger<MonitorService> logger)
     {
         _scan = scan;
         _watch = watch;
         _catalog = catalog;
         _telegram = telegram;
+        _reports = reports;
         _settings = settings;
         _logger = logger;
 
@@ -77,6 +80,7 @@ public sealed class MonitorService : IAsyncDisposable
         Start(search, JobKind.Scanning, async (job, ct) =>
         {
             await _scan.RunAsync(search, restart, progress => ScanProgressed?.Invoke(search, progress), ct);
+            CreateReportSafely(search);
             if (thenWatch)
                 await WatchLoopAsync(search, job, ct);
         });
@@ -183,6 +187,19 @@ public sealed class MonitorService : IAsyncDisposable
             _logger.LogInformation("«{Search}»: следующая проверка в {Time:HH:mm}", search.Name, job.NextCheckAt);
 
             await Task.Delay(job.NextCheckAt.Value - DateTime.Now, ct);
+        }
+    }
+
+    /// <summary>После каждого сбора — Excel-отчёт и запись о нём в базе. Ошибка отчёта не мешает слежению.</summary>
+    private void CreateReportSafely(SavedSearch search)
+    {
+        try
+        {
+            _reports.CreateReport(search);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "«{Search}»: не удалось сохранить отчёт — {Message}", search.Name, ex.Message);
         }
     }
 

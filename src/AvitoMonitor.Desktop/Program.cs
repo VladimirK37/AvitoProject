@@ -6,9 +6,10 @@ namespace AvitoMonitor.Desktop;
 
 /// <summary>
 /// Точка входа:
-/// 1) собираем «хост» — все службы программы (браузер, слежение, Telegram, журнал);
-/// 2) запускаем окно Avalonia;
-/// 3) после закрытия окна аккуратно останавливаем слежение и закрываем браузер.
+/// 1) собираем «хост» — все службы программы (базы, браузер, слежение, Telegram, журнал);
+/// 2) готовим базу PostgreSQL (миграции, перенос старых данных);
+/// 3) запускаем окно Avalonia;
+/// 4) после закрытия окна аккуратно останавливаем слежение и закрываем браузер.
 /// </summary>
 internal static class Program
 {
@@ -19,8 +20,12 @@ internal static class Program
         TrySetConsoleTitle("AvitoMonitor — журнал работы");
 
         var host = AppHost.Build(args);
-        host.Start(); // здесь же продолжается слежение, включённое до перезапуска
         App.Services = host.Services;
+
+        // База недоступна — покажем окно с инструкцией вместо главного окна
+        App.StartupError = AppHost.InitializeDatabase(host.Services);
+        if (App.StartupError is null)
+            host.Start(); // здесь же продолжается слежение, включённое до перезапуска
 
         try
         {
@@ -29,7 +34,9 @@ internal static class Program
         finally
         {
             // Слежение останавливается, но запоминается — при следующем запуске продолжится само
-            host.StopAsync().GetAwaiter().GetResult();
+            if (App.StartupError is null)
+                host.StopAsync().GetAwaiter().GetResult();
+
             ((IAsyncDisposable)host).DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
     }

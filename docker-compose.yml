@@ -1,0 +1,46 @@
+# Базы данных для AvitoMonitor. Запуск (нужен Docker Desktop):
+#   docker compose up -d
+# Остановить:
+#   docker compose stop
+#
+# Порты открыты только для этого компьютера (127.0.0.1).
+# PostgreSQL — на 5433, чтобы не мешать PostgreSQL, который может быть установлен отдельно.
+# Пароль базы можно поменять в файле .env рядом с этим файлом (POSTGRES_PASSWORD=...),
+# тогда поменяйте его и в DatabaseConnectionString в Документы\AvitoMonitor\settings.json.
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: avito-postgres
+    environment:
+      POSTGRES_DB: avito
+      POSTGRES_USER: avito
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-avito_local}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - avito-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avito -d avito"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  elasticsearch:
+    image: elasticsearch:8.19.23
+    container_name: avito-elasticsearch
+    environment:
+      - discovery.type=single-node
+      # Локальная база только для этого компьютера — без логина и HTTPS
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - avito-elasticsearch:/usr/share/elasticsearch/data
+    restart: unless-stopped
+
+volumes:
+  avito-postgres:
+  avito-elasticsearch:

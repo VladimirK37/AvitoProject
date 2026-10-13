@@ -1,5 +1,8 @@
 using AvitoMonitor.Avito;
 using AvitoMonitor.Configuration;
+using AvitoMonitor.History;
+using Avalonia.Threading;
+using Npgsql;
 using AvitoMonitor.Telegram;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -22,11 +25,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly AvitoBrowser _browser;
     private readonly TelegramApi _telegramApi;
     private readonly TelegramNotifier _telegram;
+    private readonly QueryHistoryService _history;
     private readonly ILogger<SettingsViewModel> _logger;
     private CancellationTokenSource? _connectCancellation;
 
     public SettingsViewModel(AppSettings settings, SettingsStore store, AppPaths paths, AvitoBrowser browser,
-        TelegramApi telegramApi, TelegramNotifier telegram, ILogger<SettingsViewModel> logger)
+        TelegramApi telegramApi, TelegramNotifier telegram, QueryHistoryService history, ILogger<SettingsViewModel> logger)
     {
         _settings = settings;
         _store = store;
@@ -34,8 +38,40 @@ public sealed partial class SettingsViewModel : ObservableObject
         _browser = browser;
         _telegramApi = telegramApi;
         _telegram = telegram;
+        _history = history;
         _logger = logger;
         LoadFromSettings();
+
+        history.Elastic.AvailabilityChanged += () => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(ElasticStatus)));
+    }
+
+    // ===================================================================
+    // Базы данных (подключение меняется в settings.json, нужен перезапуск)
+    // ===================================================================
+
+    public string DatabaseStatus =>
+        "PostgreSQL: " + new NpgsqlConnectionStringBuilder(_settings.DatabaseConnectionString) { Password = null };
+
+    public string ElasticStatus => $"Elasticsearch ({_settings.ElasticsearchUrl}): " + _history.Elastic.IsAvailable switch
+    {
+        true => "подключён — поиск по истории понимает опечатки",
+        false => "недоступен — история ищется по PostgreSQL",
+        null => "ещё не проверялся",
+    };
+
+    [ObservableProperty]
+    private string? _elasticSyncResult;
+
+    /// <summary>Проверить Elasticsearch и переложить в него историю из PostgreSQL.</summary>
+    [RelayCommand]
+    private async Task SyncElasticAsync()
+    {
+        ElasticSyncResult = "Синхронизирую…";
+        var count = await _history.SyncElasticAsync();
+        OnPropertyChanged(nameof(ElasticStatus));
+        ElasticSyncResult = _history.Elastic.IsAvailable == true
+            ? $"Готово: запросов в индексе — {count}."
+            : "Elasticsearch недоступен. Запустите его: docker compose up -d";
     }
 
     public IReadOnlyList<BrowserOption> Browsers { get; } =

@@ -16,11 +16,11 @@ public sealed record ScanProgress(string SourceLabel, int Page, int ItemsOnPage,
 /// После каждой страницы прогресс сохраняется. Если остановить сбор (кнопка «Стоп») или
 /// Авито прервёт работу, «Дособрать» продолжит с того же места.
 /// </summary>
-public sealed class ScanWorkflow(AvitoBrowser browser, SearchRepository repository, AppSettings settings, ILogger<ScanWorkflow> logger)
+public sealed class ScanWorkflow(AvitoBrowser browser, ISearchStore store, AppSettings settings, ILogger<ScanWorkflow> logger)
 {
     public async Task RunAsync(SavedSearch search, bool restart, Action<ScanProgress> onPage, CancellationToken ct)
     {
-        var listings = repository.LoadListings(search.Id);
+        var listings = store.LoadListings(search.Id);
         logger.LogInformation("«{Search}»: {Action}", search.Name, restart ? "сканирование с начала" : "продолжаю сканирование");
 
         foreach (var source in search.Sources)
@@ -60,13 +60,14 @@ public sealed class ScanWorkflow(AvitoBrowser browser, SearchRepository reposito
                                        || repeatedPage
                                        || source.NextPageToScan > settings.MaxPagesPerScan;
 
-                repository.SaveListings(search.Id, listings);
-                repository.Save(search);
+                // В базу пишем только объявления этой страницы — новые и обновлённые
+                store.UpsertListings(search.Id, page.Items.Select(item => listings[item.Id]));
+                store.SaveSearch(search);
             }
         }
 
         search.LastScanAt = DateTime.Now;
-        repository.Save(search);
+        store.SaveSearch(search);
         logger.LogInformation("«{Search}»: сканирование завершено, собрано {Total} объявлений", search.Name, listings.Count);
     }
 }
