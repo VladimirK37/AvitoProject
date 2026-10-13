@@ -2,24 +2,26 @@ using AvitoMonitor.Avito;
 using AvitoMonitor.Configuration;
 using AvitoMonitor.Domain;
 using AvitoMonitor.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace AvitoMonitor.Workflows;
 
-/// <summary>Прогресс сканирования одной страницы — для вывода в консоль.</summary>
+/// <summary>Прогресс сканирования одной страницы — для интерфейса.</summary>
 public sealed record ScanProgress(string SourceLabel, int Page, int ItemsOnPage, int Added, int TotalCollected, int? TotalOnAvito);
 
 /// <summary>
 /// Режим «Сканировать»: листает выдачу страница за страницей и собирает ВСЕ текущие объявления.
 /// По ним потом считается медиана — «рыночная цена», с которой сравниваются новые объявления.
 ///
-/// После каждой страницы прогресс сохраняется. Если остановить сбор (Ctrl+C) или
+/// После каждой страницы прогресс сохраняется. Если остановить сбор (кнопка «Стоп») или
 /// Авито прервёт работу, «Дособрать» продолжит с того же места.
 /// </summary>
-public sealed class ScanWorkflow(AvitoBrowser browser, SearchRepository repository, AppSettings settings)
+public sealed class ScanWorkflow(AvitoBrowser browser, SearchRepository repository, AppSettings settings, ILogger<ScanWorkflow> logger)
 {
     public async Task RunAsync(SavedSearch search, bool restart, Action<ScanProgress> onPage, CancellationToken ct)
     {
         var listings = repository.LoadListings(search.Id);
+        logger.LogInformation("«{Search}»: {Action}", search.Name, restart ? "сканирование с начала" : "продолжаю сканирование");
 
         foreach (var source in search.Sources)
         {
@@ -41,7 +43,11 @@ public sealed class ScanWorkflow(AvitoBrowser browser, SearchRepository reposito
                     source.TotalCountOnAvito = page.TotalCount;
 
                 var added = ListingMerger.Merge(listings, page.Items, source.Label, DateTime.Now);
-                onPage(new ScanProgress(source.Label, source.NextPageToScan, page.Items.Count, added, listings.Count, source.TotalCountOnAvito));
+                var progress = new ScanProgress(source.Label, source.NextPageToScan, page.Items.Count, added, listings.Count, source.TotalCountOnAvito);
+                logger.LogInformation("«{Search}» · {Source} · страница {Page}: {Items} объявл., новых {Added}, собрано {Total} из ~{OnAvito}",
+                    search.Name, source.Label, progress.Page, progress.ItemsOnPage, progress.Added, progress.TotalCollected,
+                    progress.TotalOnAvito?.ToString() ?? "?");
+                onPage(progress);
 
                 // Если Авито повторил ту же страницу — значит, страницы закончились
                 var pageIds = page.Items.Select(item => item.Id).ToHashSet();
@@ -61,5 +67,6 @@ public sealed class ScanWorkflow(AvitoBrowser browser, SearchRepository reposito
 
         search.LastScanAt = DateTime.Now;
         repository.Save(search);
+        logger.LogInformation("«{Search}»: сканирование завершено, собрано {Total} объявлений", search.Name, listings.Count);
     }
 }

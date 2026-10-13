@@ -1,0 +1,398 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AvitoMonitor.Desktop.ViewModels"
+        x:Class="AvitoMonitor.Desktop.Views.MainWindow"
+        Title="AvitoMonitor — слежу за Авито"
+        Width="1400" Height="880" MinWidth="1000" MinHeight="600"
+        WindowStartupLocation="CenterScreen">
+
+  <!-- Общие стили: заголовки, подсказки, цвета «дешевле / дороже рынка» -->
+  <Window.Styles>
+    <Style Selector="TextBlock.h1">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.h2">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,12,0,0" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="Foreground" Value="#6B6B6B" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.error">
+      <Setter Property="Foreground" Value="#C62828" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.ok">
+      <Setter Property="Foreground" Value="#2E7D32" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.cheap">
+      <Setter Property="Foreground" Value="#2E7D32" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.expensive">
+      <Setter Property="Foreground" Value="#C62828" />
+    </Style>
+    <Style Selector="TextBlock.danger">
+      <Setter Property="Foreground" Value="#C62828" />
+    </Style>
+    <Style Selector="TextBlock.warn">
+      <Setter Property="Foreground" Value="#B26A00" />
+    </Style>
+    <Style Selector="WrapPanel > Button">
+      <Setter Property="Margin" Value="0,0,6,6" />
+    </Style>
+  </Window.Styles>
+
+  <!-- Как показывать выбранный поиск (правая часть вкладки «Поиски») -->
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:SearchItemViewModel">
+      <DockPanel>
+
+        <!-- Заголовок, статус и кнопки -->
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+          <TextBlock Classes="h1" Text="{Binding Name}" />
+          <TextBlock Classes="hint" Text="{Binding CategoryTitle}" />
+          <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" />
+          <WrapPanel Margin="0,6,0,0">
+            <Button Classes="accent" Content="Сканировать и следить" Command="{Binding ScanThenWatchCommand}"
+                    ToolTip.Tip="Собрать все объявления, посчитать рыночные цены и сразу включить слежение" />
+            <Button Content="Сканировать заново" Command="{Binding ScanCommand}"
+                    ToolTip.Tip="Собрать все объявления с первой страницы" />
+            <Button Content="Дособрать" Command="{Binding ContinueScanCommand}"
+                    ToolTip.Tip="Продолжить сбор с места остановки" />
+            <Button Content="Следить" Command="{Binding WatchCommand}"
+                    ToolTip.Tip="Проверять новые объявления каждые N минут и присылать в Telegram" />
+            <Button Content="Стоп" Command="{Binding StopCommand}" />
+            <Button Content="Открыть в Excel" Command="{Binding OpenExcelCommand}" />
+            <Button Content="Обновить" Command="{Binding ReloadCommand}" />
+          </WrapPanel>
+          <TextBlock Classes="hint" Text="{Binding Message}"
+                     IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <TabControl SelectedIndex="{Binding SelectedTab}">
+
+          <!-- Таблица объявлений -->
+          <TabItem Header="Объявления">
+            <DockPanel>
+              <WrapPanel DockPanel.Dock="Top" Margin="0,4,0,6">
+                <TextBox Width="280" Text="{Binding FilterText}" Watermark="Поиск по названию, продавцу, адресу"
+                         Margin="0,0,12,6" />
+                <CheckBox Content="Скрыть копии и другие модели" IsChecked="{Binding HideExcluded}" Margin="0,0,12,6" />
+                <CheckBox Content="Только частники" IsChecked="{Binding OnlyPrivate}" Margin="0,0,12,6" />
+                <CheckBox Content="Только дешевле рынка" IsChecked="{Binding OnlyBelowMarket}" Margin="0,0,12,6" />
+                <TextBlock Classes="hint" Text="{Binding ListingsCountText}" VerticalAlignment="Center" Margin="0,0,0,6" />
+              </WrapPanel>
+
+              <DataGrid ItemsSource="{Binding Listings}" IsReadOnly="True" AutoGenerateColumns="False"
+                        CanUserSortColumns="True" CanUserResizeColumns="True" GridLinesVisibility="Horizontal">
+                <DataGrid.Columns>
+                  <DataGridTemplateColumn Header="" Width="100">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <Button Content="Открыть" Command="{Binding OpenCommand}" Margin="4,2" Padding="8,2" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="Группа" Binding="{Binding Group}" Width="150" />
+                  <DataGridTextColumn Header="Название" Binding="{Binding Title}" Width="300" />
+                  <DataGridTextColumn Header="Цена" Binding="{Binding PriceText}" SortMemberPath="Price" Width="110" />
+                  <DataGridTextColumn Header="Медиана" Binding="{Binding MedianText}" SortMemberPath="Median" Width="120" />
+                  <DataGridTemplateColumn Header="К рынку" SortMemberPath="Deviation" Width="90">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding DeviationText}" Classes.cheap="{Binding IsCheap}"
+                                   Classes.expensive="{Binding IsExpensive}" VerticalAlignment="Center" Margin="12,0" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="Пометки" SortMemberPath="Flags" Width="320">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Flags}" Classes.danger="{Binding HasDanger}" ToolTip.Tip="{Binding Flags}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="Продавец" Binding="{Binding SellerName}" Width="160" />
+                  <DataGridTextColumn Header="Отзывов" Binding="{Binding Reviews}" Width="90" />
+                  <DataGridTemplateColumn Header="Тип продавца" SortMemberPath="SellerKind" Width="240">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding SellerKind}" ToolTip.Tip="{Binding SellerReasons}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="Адрес" Binding="{Binding Address}" Width="200" />
+                  <DataGridTextColumn Header="Опубликовано" Binding="{Binding Published}" Width="130" />
+                  <DataGridTextColumn Header="Замечено" Binding="{Binding FirstSeenText}" SortMemberPath="FirstSeen" Width="110" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </DockPanel>
+          </TabItem>
+
+          <!-- Рыночные цены по группам -->
+          <TabItem Header="Рынок">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,4,0,8">
+                <TextBlock Text="{Binding MarketSummary}" TextWrapping="Wrap" />
+                <TextBlock Classes="hint" Text="{Binding SellersSummary}" />
+                <TextBlock Classes="hint"
+                           Text="Медиана — цена «посередине». Копии, другие модели и явные выбросы (в 2,5 раза дешевле или дороже) в ней не учитываются." />
+              </StackPanel>
+              <DataGrid ItemsSource="{Binding Groups}" IsReadOnly="True" AutoGenerateColumns="False"
+                        CanUserSortColumns="True" GridLinesVisibility="Horizontal">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Группа" Binding="{Binding Group}" Width="260" />
+                  <DataGridTextColumn Header="Объявлений" Binding="{Binding Count}" Width="110" />
+                  <DataGridTextColumn Header="Медиана" Binding="{Binding MedianText}" SortMemberPath="Median" Width="150" />
+                  <DataGridTextColumn Header="Минимум" Binding="{Binding MinText}" Width="150" />
+                  <DataGridTextColumn Header="Максимум" Binding="{Binding MaxText}" Width="150" />
+                  <DataGridTextColumn Header="Выбросов отброшено" Binding="{Binding Outliers}" Width="170" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </DockPanel>
+          </TabItem>
+
+          <!-- Редактирование поиска -->
+          <TabItem Header="Изменить поиск">
+            <ScrollViewer>
+              <StackPanel Spacing="8" MaxWidth="1000" HorizontalAlignment="Left" Margin="0,4,8,8">
+
+                <StackPanel DataContext="{Binding Editor}" Spacing="8">
+                  <TextBlock Classes="error" IsVisible="{Binding IsLocked}"
+                             Text="Идёт сбор или слежение — нажмите «Стоп», чтобы сохранить изменения." />
+
+                  <TextBlock Text="Название поиска" />
+                  <TextBox Text="{Binding Name}" Width="420" HorizontalAlignment="Left" />
+
+                  <TextBlock Text="Категория" />
+                  <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" Width="420" />
+                  <TextBlock Classes="hint"
+                             Text="Товары — группы по памяти и шумоподавлению; недвижимость — по комнатам, сравнивается цена за м²; авто — по году выпуска." />
+
+                  <TextBlock Classes="h2" Text="Ссылки на поиск Авито" />
+                  <TextBlock Classes="hint"
+                             Text="Несколько ссылок — это мультипоиск (например, отдельно iPhone 15, 16 и 17): цены сравниваются внутри каждой ссылки. Если поменять ссылку, собранные по ней объявления удалятся и сбор начнётся заново." />
+
+                  <ItemsControl ItemsSource="{Binding Sources}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                          <Grid ColumnDefinitions="200,8,*,8,Auto,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding Label}" Watermark="Название, напр. iPhone 15" />
+                            <TextBox Grid.Column="2" Text="{Binding Url}" Watermark="https://www.avito.ru/..." />
+                            <Button Grid.Column="4" Content="Открыть" Margin="0,0,6,0"
+                                    Command="{Binding $parent[ItemsControl].DataContext.OpenUrlCommand}"
+                                    CommandParameter="{Binding}" />
+                            <Button Grid.Column="5" Content="Удалить"
+                                    Command="{Binding $parent[ItemsControl].DataContext.RemoveSourceCommand}"
+                                    CommandParameter="{Binding}" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <WrapPanel>
+                    <Button Content="+ Добавить ссылку" Command="{Binding AddSourceCommand}" />
+                  </WrapPanel>
+                  <WrapPanel>
+                    <Button Classes="accent" Content="Сохранить изменения" Command="{Binding SaveCommand}" />
+                    <Button Content="Отменить правки" Command="{Binding ResetCommand}" />
+                  </WrapPanel>
+
+                  <TextBlock Classes="error" Text="{Binding Errors}"
+                             IsVisible="{Binding Errors, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Classes="ok" Text="{Binding Result}"
+                             IsVisible="{Binding Result, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <!-- Удаление поиска — в два шага, чтобы не удалить случайно -->
+                <Border Margin="0,24,0,0" Padding="10" BorderBrush="#F5C2C7" BorderThickness="1" CornerRadius="4"
+                        HorizontalAlignment="Left">
+                  <StackPanel Spacing="6">
+                    <Button Content="Удалить поиск…" Command="{Binding RequestDeleteCommand}" IsVisible="{Binding !ConfirmDelete}" />
+                    <StackPanel Spacing="6" IsVisible="{Binding ConfirmDelete}">
+                      <TextBlock Text="Удалить поиск вместе со всеми собранными объявлениями?" />
+                      <WrapPanel>
+                        <Button Classes="accent" Content="Да, удалить" Command="{Binding ConfirmDeleteSearchCommand}" />
+                        <Button Content="Нет" Command="{Binding CancelDeleteCommand}" />
+                      </WrapPanel>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+        </TabControl>
+      </DockPanel>
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <DockPanel>
+
+    <!-- Жёлтая полоса: Авито просит пройти проверку «я не робот» -->
+    <Border DockPanel.Dock="Top" Background="#FFF3CD" Padding="12,8"
+            IsVisible="{Binding Banner, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Скрыть" Command="{Binding DismissBannerCommand}" />
+        <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" FontWeight="SemiBold" />
+      </DockPanel>
+    </Border>
+
+    <TabControl Margin="8,4">
+
+      <!-- Поиски: список слева, выбранный поиск справа -->
+      <TabItem Header="Поиски">
+        <Grid ColumnDefinitions="330,12,*">
+          <DockPanel Grid.Column="0">
+            <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,4,0,10">
+              <TextBlock Classes="h2" Text="Новый поиск" Margin="0" />
+              <TextBlock Classes="hint"
+                         Text="Настройте поиск и фильтры на avito.ru и вставьте ссылку из адресной строки." />
+              <TextBox Text="{Binding NewSearchUrl}" Watermark="https://www.avito.ru/..." />
+              <Button Classes="accent" Content="Добавить поиск" Command="{Binding AddSearchCommand}"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+              <TextBlock Classes="error" Text="{Binding NewSearchError}"
+                         IsVisible="{Binding NewSearchError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Classes="h2" Text="Мои поиски" />
+            </StackPanel>
+
+            <ListBox ItemsSource="{Binding Searches}" SelectedItem="{Binding SelectedSearch}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Spacing="2" Margin="0,4">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="hint" Text="{Binding CategoryTitle}" FontSize="12" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+
+          <Panel Grid.Column="2">
+            <TextBlock Classes="hint" Text="Добавьте поиск слева или выберите сохранённый."
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding SelectedSearch, Converter={x:Static ObjectConverters.IsNull}}" />
+            <ContentControl Content="{Binding SelectedSearch}" />
+          </Panel>
+        </Grid>
+      </TabItem>
+
+      <!-- Новые объявления от слежения -->
+      <TabItem Header="{Binding FeedHeader}">
+        <DockPanel>
+          <WrapPanel DockPanel.Dock="Top" Margin="0,4,0,6">
+            <TextBlock Classes="hint" VerticalAlignment="Center" Margin="0,0,12,6"
+                       Text="Новые объявления, найденные слежением с момента запуска программы. Они же приходят в Telegram." />
+            <Button Content="Очистить" Command="{Binding ClearFeedCommand}" />
+          </WrapPanel>
+          <ListBox ItemsSource="{Binding Feed}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding PriceLine}" />
+                    <TextBlock Classes="hint" Text="{Binding InfoLine}" />
+                    <TextBlock Text="{Binding Flags}" Classes.danger="{Binding HasDanger}" TextWrapping="Wrap"
+                               IsVisible="{Binding Flags, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Content="Открыть" Command="{Binding OpenCommand}" VerticalAlignment="Center" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+
+      <!-- Журнал — бывшая консольная версия -->
+      <TabItem Header="Журнал">
+        <DockPanel DataContext="{Binding Log}">
+          <WrapPanel DockPanel.Dock="Top" Margin="0,4,0,6">
+            <TextBlock Classes="hint" VerticalAlignment="Center" Margin="0,0,12,6"
+                       Text="То же, что в окне консоли. Полный журнал с текстами ошибок — в папке logs." />
+            <Button Content="Открыть папку журналов" Command="{Binding OpenLogsFolderCommand}" />
+            <Button Content="Очистить" Command="{Binding ClearCommand}" />
+          </WrapPanel>
+          <ListBox ItemsSource="{Binding Entries}" FontFamily="Consolas, Courier New, monospace">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Display}" Classes.danger="{Binding IsError}" Classes.warn="{Binding IsWarning}"
+                           TextWrapping="Wrap" FontSize="12" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+
+      <!-- Настройки -->
+      <TabItem Header="Настройки">
+        <ScrollViewer DataContext="{Binding Settings}">
+          <StackPanel Spacing="8" MaxWidth="820" HorizontalAlignment="Left" Margin="0,4,8,8">
+
+            <TextBlock Classes="h1" Text="Telegram" />
+            <TextBlock Text="{Binding TelegramConnectedText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Classes="hint"
+                       Text="1. В Telegram откройте @BotFather и отправьте /newbot.  2. Задайте имя и логин бота (логин заканчивается на bot).  3. Вставьте сюда токен и нажмите «Подключить».  4. Откройте бота и нажмите «Запустить»." />
+            <TextBox Text="{Binding TelegramToken}" PasswordChar="●" Watermark="Токен бота: 1234567890:AAH..." />
+            <WrapPanel>
+              <Button Classes="accent" Content="Подключить" Command="{Binding ConnectTelegramCommand}" />
+              <Button Content="Открыть бота" Command="{Binding OpenBotCommand}"
+                      IsVisible="{Binding BotLink, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <Button Content="Отменить ожидание" Command="{Binding CancelConnectCommand}" IsVisible="{Binding IsConnecting}" />
+              <Button Content="Отправить тест" Command="{Binding SendTestCommand}" />
+              <Button Content="Отключить" Command="{Binding DisconnectTelegramCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding TelegramStatus}" TextWrapping="Wrap" />
+
+            <TextBlock Classes="h1" Text="Работа с Авито" Margin="0,16,0,0" />
+            <DockPanel>
+              <TextBlock Text="Пауза между страницами, сек" Width="360" VerticalAlignment="Center" />
+              <NumericUpDown Value="{Binding DelaySeconds}" Minimum="3" Maximum="120" Increment="1" FormatString="0" Width="160"
+                             HorizontalAlignment="Left" />
+            </DockPanel>
+            <DockPanel>
+              <TextBlock Text="Проверять новые объявления каждые, мин" Width="360" VerticalAlignment="Center" />
+              <NumericUpDown Value="{Binding WatchIntervalMinutes}" Minimum="2" Maximum="240" Increment="1" FormatString="0" Width="160"
+                             HorizontalAlignment="Left" />
+            </DockPanel>
+            <DockPanel>
+              <TextBlock Text="«Подозрительно дёшево» — на сколько % ниже медианы" Width="360" VerticalAlignment="Center" />
+              <NumericUpDown Value="{Binding CheapPercent}" Minimum="10" Maximum="90" Increment="5" FormatString="0" Width="160"
+                             HorizontalAlignment="Left" />
+            </DockPanel>
+            <CheckBox IsChecked="{Binding OpenNewListingsForDetails}"
+                      Content="Открывать новые объявления для подробной проверки (точнее определяет магазины и агентов)" />
+            <CheckBox IsChecked="{Binding HideReplicasAndOtherModels}"
+                      Content="Не присылать в Telegram копии и другие модели" />
+            <DockPanel>
+              <TextBlock Text="Браузер" Width="360" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding Browsers}" SelectedItem="{Binding SelectedBrowser}" Width="420" />
+            </DockPanel>
+            <CheckBox IsChecked="{Binding Headless}"
+                      Content="Скрытый режим браузера (без окна; проверку «я не робот» тогда пройти нельзя)" />
+            <WrapPanel>
+              <Button Classes="accent" Content="Сохранить настройки" Command="{Binding SaveCommand}" />
+            </WrapPanel>
+            <TextBlock Classes="ok" Text="{Binding SaveResult}" />
+
+            <TextBlock Classes="h1" Text="Данные" Margin="0,16,0,0" />
+            <TextBlock Classes="hint" Text="Поиски, объявления, таблицы Excel, журналы и профиль браузера хранятся здесь:" />
+            <TextBlock Text="{Binding DataFolder}" />
+            <WrapPanel>
+              <Button Content="Открыть папку с данными" Command="{Binding OpenDataFolderCommand}" />
+            </WrapPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

@@ -1,4 +1,5 @@
 using AvitoMonitor.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 
 namespace AvitoMonitor.Avito;
@@ -14,8 +15,8 @@ public sealed class AvitoCheckRequiredException(string message) : Exception(mess
 /// Авито всё-таки покажет проверку «я не робот» — вы проходите её сами в окне браузера,
 /// программа просто ждёт и продолжает. Капчу программа не решает и не обходит.
 ///
-/// Между открытиями страниц выдерживается пауза (настройка DelayBetweenPagesSeconds),
-/// чтобы не нагружать сайт.
+/// Страницы открываются строго по одной (даже если сканируются и отслеживаются
+/// несколько поисков сразу), с паузой DelayBetweenPagesSeconds между ними.
 /// </summary>
 public sealed class AvitoBrowser : IAsyncDisposable
 {
@@ -23,22 +24,28 @@ public sealed class AvitoBrowser : IAsyncDisposable
 
     private readonly AppSettings _settings;
     private readonly AppPaths _paths;
-    private readonly Func<string, Task> _onCheckRequired;
+    private readonly ILogger<AvitoBrowser> _logger;
+
+    // Очередь из одного места: пока одна страница открывается, остальные ждут
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     private IPlaywright? _playwright;
     private IBrowserContext? _context;
     private IPage? _page;
     private DateTime _lastNavigationAt = DateTime.MinValue;
 
-    /// <param name="onCheckRequired">
-    /// Что сделать, когда Авито просит пройти проверку: показать сообщение в консоли, прислать в Telegram.
-    /// </param>
-    public AvitoBrowser(AppSettings settings, AppPaths paths, Func<string, Task> onCheckRequired)
+    public AvitoBrowser(AppSettings settings, AppPaths paths, ILogger<AvitoBrowser> logger)
     {
         _settings = settings;
         _paths = paths;
-        _onCheckRequired = onCheckRequired;
+        _logger = logger;
     }
+
+    /// <summary>Авито показал проверку «я не робот» — нужно пройти её вручную в окне браузера.</summary>
+    public event Action<string>? CheckRequired;
+
+    /// <summary>Проверку прошли, работа продолжается.</summary>
+    public event Action? CheckPassed;
 
     /// <summary>Файл с HTML последней страницы, на которой не нашлось объявлений (для разбора проблем).</summary>
     public string? LastDebugFile { get; private set; }
@@ -50,7 +57,10 @@ public sealed class AvitoBrowser : IAsyncDisposable
         var page = AvitoPageParser.ParseSearchPage(html);
 
         if (page.Items.Count == 0)
+        {
             SaveDebugHtml("search", html);
+            _logger.LogWarning("На странице не нашлось объявлений, HTML сохранён: {File}", LastDebugFile);
+        }
 
         return page;
     }
@@ -64,6 +74,26 @@ public sealed class AvitoBrowser : IAsyncDisposable
 
     /// <summary>Закрывает браузер. При следующем запросе он запустится заново (с новыми настройками).</summary>
     public async Task CloseAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await CloseContextAsync();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await CloseContextAsync();
+        _playwright?.Dispose();
+        _playwright = null;
+    }
+
+    private async Task CloseContextAsync()
     {
         if (_context is not null)
         {
@@ -81,41 +111,43 @@ public sealed class AvitoBrowser : IAsyncDisposable
         _page = null;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await CloseAsync();
-        _playwright?.Dispose();
-        _playwright = null;
-    }
-
     private async Task<string> OpenAsync(Uri url, string waitForSelector, CancellationToken ct)
     {
-        var page = await GetPageAsync();
-
-        // Обычно хватает одной попытки. Вторая и третья — если после проверки Авито снова показал заглушку.
-        for (var attempt = 1; attempt <= 3; attempt++)
-        {
-            await WaitPoliteDelayAsync(ct);
-            await page.GotoAsync(url.ToString(), new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60_000 });
-            _lastNavigationAt = DateTime.UtcNow;
-
-            if (!await IsCheckPageAsync(page))
-                break;
-
-            await WaitUntilUserPassesCheckAsync(page, ct);
-        }
-
+        await _gate.WaitAsync(ct);
         try
         {
-            // Объявления обычно уже в HTML, но дадим странице пару секунд догрузиться
-            await page.WaitForSelectorAsync(waitForSelector, new PageWaitForSelectorOptions { Timeout = 10_000 });
-        }
-        catch (PlaywrightException)
-        {
-            // Нужного элемента нет — разберём то, что есть
-        }
+            var page = await GetPageAsync();
 
-        return await page.ContentAsync();
+            // Обычно хватает одной попытки. Вторая и третья — если после проверки Авито снова показал заглушку.
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                await WaitPoliteDelayAsync(ct);
+                _logger.LogDebug("Открываю {Url}", url);
+                await page.GotoAsync(url.ToString(), new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60_000 });
+                _lastNavigationAt = DateTime.UtcNow;
+
+                if (!await IsCheckPageAsync(page))
+                    break;
+
+                await WaitUntilUserPassesCheckAsync(page, ct);
+            }
+
+            try
+            {
+                // Объявления обычно уже в HTML, но дадим странице пару секунд догрузиться
+                await page.WaitForSelectorAsync(waitForSelector, new PageWaitForSelectorOptions { Timeout = 10_000 });
+            }
+            catch (PlaywrightException)
+            {
+                // Нужного элемента нет — разберём то, что есть
+            }
+
+            return await page.ContentAsync();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private async Task WaitUntilUserPassesCheckAsync(IPage page, CancellationToken ct)
@@ -127,13 +159,17 @@ public sealed class AvitoBrowser : IAsyncDisposable
                 "Выключите «Скрытый режим браузера» в настройках, чтобы пройти проверку вручную.");
         }
 
+        const string message = "Авито просит подтвердить, что вы не робот. Переключитесь в окно браузера программы " +
+                               "и пройдите проверку вручную — программа подождёт и продолжит сама.";
+        _logger.LogWarning(message);
         await page.BringToFrontAsync();
-        await _onCheckRequired(
-            "Авито просит подтвердить, что вы не робот. Переключитесь в окно браузера программы " +
-            "и пройдите проверку вручную — программа подождёт и продолжит сама.");
+        CheckRequired?.Invoke(message);
 
         while (await IsCheckPageAsync(page))
             await Task.Delay(CheckPollInterval, ct);
+
+        _logger.LogInformation("Проверка Авито пройдена, продолжаю");
+        CheckPassed?.Invoke();
     }
 
     private static async Task<bool> IsCheckPageAsync(IPage page)
@@ -167,6 +203,7 @@ public sealed class AvitoBrowser : IAsyncDisposable
         if (_context is null)
         {
             _playwright ??= await Playwright.CreateAsync();
+            _logger.LogInformation("Запускаю браузер «{Channel}»{Mode}", _settings.BrowserChannel, _settings.Headless ? " в скрытом режиме" : "");
 
             try
             {
@@ -184,7 +221,7 @@ public sealed class AvitoBrowser : IAsyncDisposable
             {
                 throw new InvalidOperationException(
                     $"Не удалось запустить браузер «{_settings.BrowserChannel}». Проверьте, что он установлен, " +
-                    "или выберите другой в «Настройки → Браузер». Подробнее — docs/troubleshooting.md." +
+                    "или выберите другой в настройках (см. README, раздел «Если что-то не работает»)." +
                     Environment.NewLine + ex.Message, ex);
             }
 

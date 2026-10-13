@@ -23,6 +23,9 @@ public sealed class SavedSearch
 
     public DateTime? LastWatchAt { get; set; }
 
+    /// <summary>Слежение включено — после перезапуска программы оно продолжится само.</summary>
+    public bool WatchEnabled { get; set; }
+
     [JsonIgnore]
     public bool IsMulti => Sources.Count > 1;
 }

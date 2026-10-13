@@ -22,7 +22,8 @@ public sealed class SearchRepository(string searchesDir)
     private const string ListingsFile = "listings.json";
     private const string ReportFile = "report.xlsx";
 
-    public static string NewId() => DateTime.Now.ToString("yyyyMMdd-HHmmss");
+    // С миллисекундами: в интерфейсе можно добавить два поиска в одну секунду
+    public static string NewId() => DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
 
     public IReadOnlyList<SavedSearch> GetAll()
     {

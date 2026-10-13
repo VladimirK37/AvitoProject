@@ -16,6 +16,7 @@ public sealed class AppPaths
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(SearchesDir);
         Directory.CreateDirectory(DebugDir);
+        Directory.CreateDirectory(LogsDir);
     }
 
     /// <summary>Корневая папка с данными.</summary>
@@ -33,8 +34,8 @@ public sealed class AppPaths
     /// <summary>Сюда сохраняется HTML страницы, если программа не смогла найти на ней объявления.</summary>
     public string DebugDir => Path.Combine(Root, "debug");
 
-    /// <summary>Журнал ошибок.</summary>
-    public string ErrorLogFile => Path.Combine(Root, "errors.log");
+    /// <summary>Журнал работы программы: по файлу на день (logs\avito-2026-10-13.log).</summary>
+    public string LogsDir => Path.Combine(Root, "logs");
 
     public static AppPaths CreateDefault()
     {
